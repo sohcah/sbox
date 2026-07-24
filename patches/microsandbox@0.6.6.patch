@@ -1,0 +1,13 @@
+diff --git a/native/index.d.ts b/native/index.d.ts
+index fb3841d2c76633335484ca785fec8842798f7478..f2da90d209d951da509b7cb5494bb9e17e95f534 100644
+--- a/native/index.d.ts
++++ b/native/index.d.ts
+@@ -1233,7 +1233,7 @@ export type JsSandboxHandle = SandboxHandle
+ export declare class SecretBuilder {
+   constructor()
+   /** Environment variable to expose the placeholder under (required). */
+-  env(var: string): this
++  env(variable: string): this
+   /** Secret value (required). */
+   value(value: string): this
+   /** Custom placeholder. Auto-generated as `$MSB_<env>` when unset. */

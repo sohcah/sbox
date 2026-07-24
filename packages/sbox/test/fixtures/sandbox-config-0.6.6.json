@@ -1,0 +1,56 @@
+{
+  "name": "cfg-probe-full",
+  "image": {
+    "Oci": {
+      "reference": "alpine:3.20"
+    }
+  },
+  "resources": {
+    "cpus": 1,
+    "memoryMib": 512,
+    "maxCpus": 1,
+    "maxMemoryMib": 512
+  },
+  "runtime": {
+    "workdir": "/work",
+    "shell": "/bin/sh",
+    "scripts": {},
+    "entrypoint": null,
+    "cmd": null,
+    "hostname": "probe",
+    "user": "root",
+    "logLevel": null,
+    "metricsSampleIntervalMs": 1000,
+    "disableMetricsSample": false
+  },
+  "env": [
+    {
+      "key": "FOO",
+      "value": "bar"
+    }
+  ],
+  "labels": {
+    "dev.sohcah.sbox/instance": "main",
+    "dev.sohcah.sbox/managed": "true",
+    "dev.sohcah.sbox/profile": "default",
+    "dev.sohcah.sbox/project": "demo"
+  },
+  "rlimits": [],
+  "mounts": [],
+  "patches": [],
+  "network": {
+    "enabled": true,
+    "ports": [],
+    "maxConnections": null,
+    "trustHostCas": false
+  },
+  "init": null,
+  "pullPolicy": "IfMissing",
+  "securityProfile": "default",
+  "lifecycle": {
+    "ephemeral": false,
+    "maxDurationSecs": null,
+    "idleTimeoutSecs": null
+  },
+  "manifestDigest": null
+}

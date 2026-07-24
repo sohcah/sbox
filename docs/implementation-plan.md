@@ -61,6 +61,28 @@ Tests and evidence:
 Exit condition: a typed script can manage one real image-referenced sandbox
 locally with no YAML, Docker, QCOW2 helper, HTTP, or product database.
 
+### Phase 1 implementation notes
+
+- Workspace packages are `@sohcah/sbox` and `@sohcah/sbox-sandcastle`.
+- Pinned `microsandbox@0.6.6` still needs the isolated TypeScript 7
+  `SecretBuilder.env(var: string)` declaration patch; see `patches/README.md`.
+- Native names use `sbox-{readable}-{sha256[:16]}` derived from project +
+  instance, capped at 128 UTF-8 bytes.
+- Reserved labels use the `dev.sohcah.sbox/*` keys for managed / project /
+  instance / profile. Names are never ownership evidence.
+- Persisted `SandboxConfig` for this pin is decoded from the exact
+  `image.Oci.reference` / `resources.*` / `runtime.*` / `env[{key,value}]`
+  shape returned by `Sandbox.builder(...).build()`.
+- Immutable creation matching uses a reserved
+  `dev.sohcah.sbox/creation` fingerprint so SDK-injected environment
+  values (such as `PATH`) cannot cause false ownership conflicts.
+- Stopping a running sandbox acquires a live SDK object, then
+  stop → detach/consume → fresh `get` before inspect/restart/remove.
+- Ordinary unit checks use `FakeHost` and `LocalHost` over an in-memory native
+  seam. Real create/inspect/stop/detach/get/start/remove acceptance is
+  `pnpm test:acceptance` and requires a Microsandbox-capable host plus a short
+  disposable `MSB_HOME`.
+
 ## Phase 2: Strict configuration, client workflows, and lifecycle CLI
 
 Add portable project intent and the normal named-sandbox experience while

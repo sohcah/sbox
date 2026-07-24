@@ -1,0 +1,4 @@
+{
+  "files": [],
+  "references": [{ "path": "./packages/sbox" }, { "path": "./packages/sbox-sandcastle" }]
+}

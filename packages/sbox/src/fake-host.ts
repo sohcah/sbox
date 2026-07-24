@@ -1,0 +1,386 @@
+/**
+ * In-memory FakeHost for Phase 1 Host contract tests.
+ *
+ * Models only the lifecycle contract. It is not a repository, workflow engine,
+ * repair system, or second lifecycle authority beyond what contract tests need.
+ */
+
+import { SboxError, throwIfAborted, wrapUnknownFailure } from "./errors.js";
+import type { Host } from "./host.js";
+import {
+  assertSandboxIdentity,
+  nativeSandboxName,
+  type NativeSandboxName,
+  type SandboxIdentity,
+} from "./identity.js";
+import { createRedactingLogger, safeLog, silentLogger, type Logger } from "./logging.js";
+import { inspectOwnershipLabels } from "./ownership.js";
+import { buildOwnershipLabels } from "./ownership-adoption.js";
+import { projectCreateRequest } from "./immutable-creation.js";
+import type {
+  HostCapabilities,
+  HostCreateRequest,
+  HostListOptions,
+  OperationOptions,
+  SandboxCreationSettings,
+  SandboxInspection,
+  SandboxLifecycleState,
+  SandboxSummary,
+} from "./types.js";
+import { sandboxIdentityKey } from "./types.js";
+
+export interface FakeHostOptions {
+  readonly logger?: Logger;
+  /** Optional clock for deterministic timestamps in tests. */
+  readonly now?: () => Date;
+}
+
+interface StoredSandbox {
+  identity: SandboxIdentity;
+  nativeName: NativeSandboxName;
+  state: SandboxLifecycleState;
+  creation: SandboxCreationSettings;
+  env: Readonly<Record<string, string>>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export class FakeHost implements Host {
+  private readonly byKey = new Map<string, StoredSandbox>();
+  private readonly byNativeName = new Map<string, string>();
+  private readonly logger: Logger;
+  private readonly now: () => Date;
+  private disposed = false;
+
+  constructor(options: FakeHostOptions = {}) {
+    this.logger = createRedactingLogger(options.logger ?? silentLogger);
+    this.now = options.now ?? (() => new Date());
+  }
+
+  async create(request: HostCreateRequest, options?: OperationOptions): Promise<SandboxInspection> {
+    return this.withOperation("create", request.identity, options, async () => {
+      const identity = assertSandboxIdentity(request.identity);
+      this.validateCreateRequest(request);
+      const key = sandboxIdentityKey(identity);
+      const nativeName = nativeSandboxName(identity.project, identity.instance);
+
+      const existing = this.byKey.get(key);
+      if (existing !== undefined) {
+        throw SboxError.alreadyExists(
+          `Sandbox ${identity.project}/${identity.instance} already exists.`,
+          {
+            details: {
+              project: identity.project,
+              instance: identity.instance,
+              nativeName: existing.nativeName,
+            },
+          },
+        );
+      }
+
+      const nativeOwner = this.byNativeName.get(nativeName);
+      if (nativeOwner !== undefined) {
+        throw SboxError.ownershipConflict(
+          `Native sandbox name ${nativeName} is already occupied by an unrelated resource.`,
+          { details: { nativeName } },
+        );
+      }
+
+      const timestamp = this.now().toISOString();
+      const projected = projectCreateRequest(request);
+      const creation = creationFromProjection(projected);
+      const stored: StoredSandbox = {
+        identity,
+        nativeName,
+        state: "running",
+        creation,
+        env: projected.env,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      this.byKey.set(key, stored);
+      this.byNativeName.set(nativeName, key);
+      return this.toInspection(stored);
+    });
+  }
+
+  async get(identity: SandboxIdentity, options?: OperationOptions): Promise<SandboxInspection> {
+    return this.inspect(identity, options);
+  }
+
+  async list(options?: HostListOptions): Promise<readonly SandboxSummary[]> {
+    return this.withOperation("list", undefined, options, async () => {
+      const all = [...this.byKey.values()];
+      const filtered =
+        options?.project === undefined
+          ? all
+          : all.filter((item) => item.identity.project === options.project);
+      return filtered.map((item) => ({
+        identity: item.identity,
+        nativeName: item.nativeName,
+        state: item.state,
+        image: item.creation.image,
+      }));
+    });
+  }
+
+  async inspect(identity: SandboxIdentity, options?: OperationOptions): Promise<SandboxInspection> {
+    return this.withOperation("inspect", identity, options, async () => {
+      return this.toInspection(this.require(identity));
+    });
+  }
+
+  async start(identity: SandboxIdentity, options?: OperationOptions): Promise<SandboxInspection> {
+    return this.withOperation("start", identity, options, async () => {
+      const stored = this.require(identity);
+      if (stored.state === "running") {
+        return this.toInspection(stored);
+      }
+      if (stored.state !== "stopped") {
+        throw SboxError.nativeState(`Cannot start sandbox in state ${formatState(stored.state)}.`, {
+          details: { state: stored.state },
+        });
+      }
+      stored.state = "running";
+      stored.updatedAt = this.now().toISOString();
+      return this.toInspection(stored);
+    });
+  }
+
+  async stop(identity: SandboxIdentity, options?: OperationOptions): Promise<SandboxInspection> {
+    return this.withOperation("stop", identity, options, async () => {
+      const stored = this.require(identity);
+      if (stored.state === "stopped") {
+        return this.toInspection(stored);
+      }
+      if (stored.state !== "running" && stored.state !== "draining") {
+        throw SboxError.nativeState(`Cannot stop sandbox in state ${formatState(stored.state)}.`, {
+          details: { state: stored.state },
+        });
+      }
+      stored.state = "stopped";
+      stored.updatedAt = this.now().toISOString();
+      return this.toInspection(stored);
+    });
+  }
+
+  async remove(identity: SandboxIdentity, options?: OperationOptions): Promise<void> {
+    await this.withOperation("remove", identity, options, async () => {
+      const stored = this.require(identity);
+      if (stored.state === "running" || stored.state === "draining") {
+        stored.state = "stopped";
+        stored.updatedAt = this.now().toISOString();
+      }
+      this.byKey.delete(sandboxIdentityKey(identity));
+      this.byNativeName.delete(stored.nativeName);
+    });
+  }
+
+  async capabilities(options?: OperationOptions): Promise<HostCapabilities> {
+    return this.withOperation("capabilities", undefined, options, async () => ({
+      localMicrosandbox: false,
+      notes: ["FakeHost models the Phase 1 Host contract in memory."],
+    }));
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    this.disposed = true;
+  }
+
+  /** Test helper: seed or replace stored state without going through create. */
+  seed(input: {
+    readonly identity: SandboxIdentity;
+    readonly state?: SandboxLifecycleState;
+    readonly creation?: SandboxCreationSettings;
+    readonly nativeName?: NativeSandboxName;
+  }): SandboxInspection {
+    const identity = assertSandboxIdentity(input.identity);
+    const key = sandboxIdentityKey(identity);
+    const nativeName = input.nativeName ?? nativeSandboxName(identity.project, identity.instance);
+    const timestamp = this.now().toISOString();
+    const creation = input.creation ?? {
+      image: "alpine:3.20",
+      cpus: 1,
+      memoryMiB: 512,
+    };
+    const stored: StoredSandbox = {
+      identity,
+      nativeName,
+      state: input.state ?? "stopped",
+      creation,
+      env: {},
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    this.byKey.set(key, stored);
+    this.byNativeName.set(nativeName, key);
+    return this.toInspection(stored);
+  }
+
+  /** Test helper: place a conflicting native resource that fails ownership checks. */
+  seedForeignNative(nativeName: NativeSandboxName, image = "foreign:latest"): void {
+    const key = `foreign:${nativeName}`;
+    const timestamp = this.now().toISOString();
+    const identity = assertSandboxIdentity({
+      project: "foreign-project",
+      profile: "foreign-profile",
+      instance: "foreign-instance",
+    });
+    // Intentionally do not index under the caller's identity key.
+    this.byNativeName.set(nativeName, key);
+    this.byKey.set(key, {
+      identity,
+      nativeName,
+      state: "stopped",
+      creation: { image, cpus: 1, memoryMiB: 512 },
+      env: {},
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+  }
+
+  private require(identity: SandboxIdentity): StoredSandbox {
+    const normalized = assertSandboxIdentity(identity);
+    const stored = this.byKey.get(sandboxIdentityKey(normalized));
+    if (stored === undefined) {
+      throw SboxError.notFound(
+        `Sandbox ${normalized.project}/${normalized.instance} was not found.`,
+        {
+          details: {
+            project: normalized.project,
+            instance: normalized.instance,
+            nativeName: nativeSandboxName(normalized.project, normalized.instance),
+          },
+        },
+      );
+    }
+    const ownership = inspectOwnershipLabels(this.toInspection(stored).labels);
+    if (
+      !ownership.ok ||
+      ownership.identity.project !== normalized.project ||
+      ownership.identity.instance !== normalized.instance ||
+      ownership.identity.profile !== normalized.profile
+    ) {
+      throw SboxError.ownershipConflict(
+        `Sandbox ${normalized.project}/${normalized.instance} failed ownership checks.`,
+        { details: { reason: ownership.ok ? "Identity labels do not match." : ownership.reason } },
+      );
+    }
+    return stored;
+  }
+
+  private toInspection(stored: StoredSandbox): SandboxInspection {
+    const projected = projectCreateRequest({
+      image: stored.creation.image,
+      cpus: stored.creation.cpus,
+      memoryMiB: stored.creation.memoryMiB,
+      ...(stored.creation.workdir !== undefined ? { workdir: stored.creation.workdir } : {}),
+      ...(stored.creation.user !== undefined ? { user: stored.creation.user } : {}),
+      ...(stored.creation.shell !== undefined ? { shell: stored.creation.shell } : {}),
+      ...(stored.creation.hostname !== undefined ? { hostname: stored.creation.hostname } : {}),
+      env: stored.env,
+    });
+    return {
+      identity: stored.identity,
+      nativeName: stored.nativeName,
+      state: stored.state,
+      creation: { ...stored.creation },
+      labels: buildOwnershipLabels(stored.identity, projected),
+      createdAt: stored.createdAt,
+      updatedAt: stored.updatedAt,
+    };
+  }
+
+  private validateCreateRequest(request: HostCreateRequest): void {
+    if (request.image.trim().length === 0) {
+      throw SboxError.validation("Sandbox image is required.", {
+        details: { path: "image", message: "Expected a non-empty image reference." },
+      });
+    }
+    if (request.cpus !== undefined && (!Number.isInteger(request.cpus) || request.cpus < 1)) {
+      throw SboxError.validation("Sandbox cpus must be a positive integer.", {
+        details: { path: "cpus" },
+      });
+    }
+    if (
+      request.memoryMiB !== undefined &&
+      (!Number.isInteger(request.memoryMiB) || request.memoryMiB < 1)
+    ) {
+      throw SboxError.validation("Sandbox memoryMiB must be a positive integer.", {
+        details: { path: "memoryMiB" },
+      });
+    }
+  }
+
+  private async withOperation<T>(
+    operation: string,
+    identity: SandboxIdentity | undefined,
+    options: OperationOptions | undefined,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    this.ensureOpen();
+    throwIfAborted(options?.signal);
+    const started = Date.now();
+    try {
+      const result = await run();
+      throwIfAborted(options?.signal);
+      safeLog(this.logger, {
+        level: "info",
+        message: `${operation} succeeded`,
+        operation,
+        durationMs: Date.now() - started,
+        resultCode: "ok",
+        ...(identity !== undefined
+          ? {
+              project: identity.project,
+              profile: identity.profile,
+              instance: identity.instance,
+            }
+          : {}),
+      });
+      return result;
+    } catch (error) {
+      const wrapped = wrapUnknownFailure(error);
+      safeLog(this.logger, {
+        level: "error",
+        message: `${operation} failed`,
+        operation,
+        durationMs: Date.now() - started,
+        resultCode: wrapped.code,
+        ...(identity !== undefined
+          ? {
+              project: identity.project,
+              profile: identity.profile,
+              instance: identity.instance,
+            }
+          : {}),
+        details: wrapped.toSafeJSON().details,
+      });
+      throw wrapped;
+    }
+  }
+
+  private ensureOpen(): void {
+    if (this.disposed) {
+      throw SboxError.internal("FakeHost has been disposed.");
+    }
+  }
+}
+
+function creationFromProjection(
+  projected: ReturnType<typeof projectCreateRequest>,
+): SandboxCreationSettings {
+  return {
+    image: projected.image,
+    cpus: projected.cpus,
+    memoryMiB: projected.memoryMiB,
+    ...(projected.workdir !== null ? { workdir: projected.workdir } : {}),
+    ...(projected.user !== null ? { user: projected.user } : {}),
+    ...(projected.shell !== null ? { shell: projected.shell } : {}),
+    ...(projected.hostname !== null ? { hostname: projected.hostname } : {}),
+  };
+}
+
+function formatState(state: SandboxLifecycleState): string {
+  return typeof state === "string" ? state : `unknown(${state.native})`;
+}

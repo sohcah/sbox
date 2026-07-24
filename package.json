@@ -1,7 +1,33 @@
 {
-  "name": "sbox",
-  "version": "0.0.0",
+  "name": "sbox-workspace",
   "private": true,
+  "description": "A small configuration, image, and remote-operation layer over Microsandbox",
   "type": "module",
-  "description": "A small configuration, image, and remote-operation layer over Microsandbox"
+  "scripts": {
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc -b --pretty false && tsc -p packages/sbox/tsconfig.test.json --pretty false && tsc -p packages/sbox-sandcastle/tsconfig.test.json --pretty false",
+    "build": "tsc -b --pretty false",
+    "test": "vitest run --project unit",
+    "test:acceptance": "vitest run --project acceptance --reporter=default",
+    "clean": "rm -rf packages/*/dist packages/*/tsconfig.tsbuildinfo tsconfig.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "oxfmt": "0.60.0",
+    "oxlint": "1.75.0",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.28.0",
+  "pnpm": {
+    "patchedDependencies": {
+      "microsandbox@0.6.6": "patches/microsandbox@0.6.6.patch"
+    }
+  }
 }

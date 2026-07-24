@@ -41,6 +41,8 @@ describe("uncertain-create immutable matching", () => {
       user: null,
       shell: null,
       hostname: null,
+      maxDurationSecs: null,
+      idleTimeoutSecs: null,
       env: { TOKEN: "secret-value" },
     });
     const host = createLocalHostInternal({ runtime });
@@ -79,6 +81,8 @@ describe("uncertain-create immutable matching", () => {
         user: null,
         shell: null,
         hostname: null,
+        maxDurationSecs: null,
+        idleTimeoutSecs: null,
         env: {},
         ...nativeOverride,
       });
@@ -112,6 +116,8 @@ describe("uncertain-create immutable matching", () => {
         user: null,
         shell: null,
         hostname: null,
+        maxDurationSecs: null,
+        idleTimeoutSecs: null,
         env: {},
         ...nativeOverride,
       });
@@ -137,6 +143,8 @@ describe("uncertain-create immutable matching", () => {
         user: request.user,
         shell: request.shell,
         hostname: request.hostname,
+        maxDurationSecs: request.maxDurationSecs,
+        idleTimeoutSecs: request.idleTimeoutSecs,
         env: { ...request.env },
       });
       throw new Error("Simulated uncertain create failure (config drift).");
@@ -186,6 +194,8 @@ describe("uncertain-create immutable matching", () => {
       user: null,
       shell: null,
       hostname: null,
+      maxDurationSecs: null,
+      idleTimeoutSecs: null,
       env: { TOKEN: "beta" },
     });
     const host = createLocalHostInternal({ runtime });

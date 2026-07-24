@@ -1,7 +1,21 @@
 #!/usr/bin/env node
 /**
- * CLI entry placeholder. Phase 1 does not register commands.
+ * CLI process entry. Thin adapter over the testable runner.
  */
 
-console.error("sbox CLI commands are not implemented in Phase 1.");
-process.exitCode = 1;
+import { homedir } from "node:os";
+import { runCli } from "./cli/runner.js";
+
+const code = await runCli({
+  argv: process.argv.slice(2),
+  io: {
+    stdout: process.stdout,
+    stderr: process.stderr,
+    cwd: process.cwd(),
+    env: process.env,
+    homeDir: homedir(),
+    platform: process.platform,
+  },
+});
+
+process.exitCode = code;

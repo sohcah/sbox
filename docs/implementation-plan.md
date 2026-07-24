@@ -122,6 +122,26 @@ Tests and evidence:
 Exit condition: `sbox up <profile>` is a thin configuration-to-SDK workflow
 with stable programmatic equivalents and no automatic image building yet.
 
+### Phase 2 implementation notes
+
+- Typed `ProjectConfig` is primary; `sbox.yaml` is a strict adapter with human
+  `memory` / `maxDuration` / `idleTimeout` sugar normalized into MiB/seconds.
+- External values use `{ env }`, `{ file }`, or `{ invocation }` references;
+  all missing references are accumulated before Host mutation.
+- Volume declarations are accepted as Phase 6 schema placeholders only.
+- Target precedence is explicit invocation → project `target` → user
+  `defaultTarget` → local. Remote targets parse and resolve credentials but
+  fail with a capability error until Phase 7.
+- `SboxClient.up` is create-if-absent / start-if-stopped / success-if-running
+  and reports inspectable creation drift without reconciling.
+- Default instance identity equals the profile slug; `--instance` / API
+  `instance` overrides remain portable slugs.
+- Host create/inspect now carry native `maxDurationSecs` / `idleTimeoutSecs`.
+- CLI runner is process-exit free for tests; documented exit codes cover
+  validation, ownership/drift, not-found, and already-exists.
+- Real local image-reference `up` acceptance is
+  `packages/sbox/test/up.acceptance.test.ts` under `pnpm test:acceptance`.
+
 ## Phase 3: Local execution, PTY, and transfer
 
 Complete the general local handle needed by developer tools before building the

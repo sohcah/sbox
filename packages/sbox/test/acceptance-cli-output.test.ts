@@ -35,8 +35,8 @@ describe("pnpm test:acceptance CLI output", () => {
     });
     const output = `${result.stdout}\n${result.stderr}`;
     expect(findAcceptanceStatusLine(output)).toMatch(/sbox-acceptance-status:\s*unavailable/);
-    expect(output).toMatch(/Tests\s+1\s+skipped/);
-    expect(output).not.toMatch(/Tests\s+1\s+passed/);
+    expect(output).toMatch(/Tests\s+2\s+skipped/);
+    expect(output).not.toMatch(/Tests\s+\d+\s+passed/);
     expect(result.status).toBe(0);
   }, 60_000);
 
@@ -48,7 +48,7 @@ describe("pnpm test:acceptance CLI output", () => {
     });
     const output = `${result.stdout}\n${result.stderr}`;
     expect(findAcceptanceStatusLine(output)).toMatch(/sbox-acceptance-status:\s*passed/);
-    expect(output).toMatch(/Test Files\s+1\s+passed/);
+    expect(output).toMatch(/Test Files\s+2\s+passed/);
     expect(result.status).toBe(0);
   }, 60_000);
 });

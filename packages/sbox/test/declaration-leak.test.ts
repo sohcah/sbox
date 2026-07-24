@@ -87,6 +87,31 @@ describe("declaration leak guard", () => {
     expect(combined).not.toMatch(/\bSandboxImmutableCreation\b/);
     expect(combined).not.toMatch(/\bbuildOwnershipLabels\b/);
     expect(combined).not.toMatch(/\bmatchOwnershipLabels\b/);
+    expect(combined).not.toMatch(/\bHostSboxClient\b/);
+    expect(combined).not.toMatch(/\bHostSandboxHandle\b/);
+    expect(combined).not.toMatch(/\bhandle-impl\b/);
+    expect(combined).not.toMatch(/\bprojectConfigSchema\b/);
+    expect(combined).not.toMatch(/\byamlProjectInputSchema\b/);
+    expect(combined).not.toMatch(/\bnormalizeYamlProjectInput\b/);
+    expect(combined).not.toMatch(/\bresolveCreateIntent\b/);
+    expect(combined).not.toMatch(/\breportCreationDrift\b/);
+    expect(combined).not.toMatch(/\bimmutableCreationDriftFields\b/);
+    expect(combined).not.toMatch(/\bconfig\/schema\b/);
+    expect(combined).not.toMatch(/\bresolveTarget\b/);
+    expect(combined).not.toMatch(/\brequireLocalTarget\b/);
+    expect(combined).not.toMatch(/\bResolvedRemoteTarget\b/);
+    expect(combined).not.toMatch(/\bResolvedLocalTarget\b/);
+    expect(combined).not.toMatch(/\bselectTargetName\b/);
+    expect(combined).not.toMatch(/\bassertLocalTarget\b/);
+    expect(combined).not.toMatch(/\bExternalResolutionContext\b/);
+    expect(combined).not.toMatch(/\bresolveExternalValue\b/);
+    expect(combined).not.toMatch(/\bresolveEnvironmentMap\b/);
+    expect(combined).not.toMatch(/\bplatformUserConfigPath\b/);
+    expect(combined).not.toMatch(/\bparseBinarySizeToMiB\b/);
+    expect(combined).not.toMatch(/\brunCli\b/);
+    expect(combined).not.toMatch(/\bCliIo\b/);
+    expect(combined).not.toMatch(/\bCliContext\b/);
+    expect(combined).not.toMatch(/readonly token: string/);
 
     const consumerDir = await mkdtemp(join(tmpdir(), "sbox-consumer-"));
     try {
@@ -135,15 +160,27 @@ import {
   SboxError,
   assertSandboxIdentity,
   createLocalHost,
+  createSboxClient,
   nativeSandboxName,
+  parseProjectConfig,
   type Host,
   type SandboxInspection,
   type ProcessResult,
   type ProcessEvent,
+  type SboxClient,
 } from "@sohcah/sbox";
 
 export async function smoke(): Promise<SandboxInspection> {
   const host: Host = createLocalHost();
+  const client: SboxClient = createSboxClient({
+    project: parseProjectConfig({
+      version: 1,
+      project: "demo",
+      profiles: { default: { image: "alpine:3.20" } },
+    }),
+    host,
+    ownsHost: false,
+  });
   const identity = assertSandboxIdentity({
     project: "demo",
     profile: "default",
@@ -154,6 +191,7 @@ export async function smoke(): Promise<SandboxInspection> {
   if (SboxError.notFound("x") instanceof SboxError) {
     // ok
   }
+  void client;
   return host.inspect(identity);
 }
 

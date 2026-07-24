@@ -1,5 +1,5 @@
 /**
- * Phase 1 immutable creation projection helpers.
+ * Immutable creation projection helpers.
  *
  * Internal to Host adapters. Not part of the public package declaration graph.
  */
@@ -24,6 +24,8 @@ export function projectCreateRequest(request: {
   readonly shell?: string;
   readonly hostname?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly maxDurationSecs?: number | null;
+  readonly idleTimeoutSecs?: number | null;
 }): SandboxImmutableCreation {
   return Object.freeze({
     image: request.image,
@@ -34,6 +36,8 @@ export function projectCreateRequest(request: {
     shell: request.shell ?? null,
     hostname: request.hostname ?? null,
     env: Object.freeze(request.env === undefined ? {} : { ...request.env }),
+    maxDurationSecs: request.maxDurationSecs ?? null,
+    idleTimeoutSecs: request.idleTimeoutSecs ?? null,
   });
 }
 
@@ -49,8 +53,52 @@ export function immutableCreationEquals(
     left.user === right.user &&
     left.shell === right.shell &&
     left.hostname === right.hostname &&
+    left.maxDurationSecs === right.maxDurationSecs &&
+    left.idleTimeoutSecs === right.idleTimeoutSecs &&
     envRecordsEqual(left.env, right.env)
   );
+}
+
+/**
+ * Safe field names that differ between two immutable projections.
+ * Environment values are never returned—only the aggregate `environment` marker.
+ */
+export function immutableCreationDriftFields(
+  expected: SandboxImmutableCreation,
+  actual: SandboxImmutableCreation,
+): readonly string[] {
+  const fields: string[] = [];
+  if (expected.image !== actual.image) {
+    fields.push("image");
+  }
+  if (expected.cpus !== actual.cpus) {
+    fields.push("cpus");
+  }
+  if (expected.memoryMiB !== actual.memoryMiB) {
+    fields.push("memoryMiB");
+  }
+  if (expected.workdir !== actual.workdir) {
+    fields.push("workdir");
+  }
+  if (expected.user !== actual.user) {
+    fields.push("user");
+  }
+  if (expected.shell !== actual.shell) {
+    fields.push("shell");
+  }
+  if (expected.hostname !== actual.hostname) {
+    fields.push("hostname");
+  }
+  if (expected.maxDurationSecs !== actual.maxDurationSecs) {
+    fields.push("maxDurationSecs");
+  }
+  if (expected.idleTimeoutSecs !== actual.idleTimeoutSecs) {
+    fields.push("idleTimeoutSecs");
+  }
+  if (!envRecordsEqual(expected.env, actual.env)) {
+    fields.push("environment");
+  }
+  return fields;
 }
 
 function envRecordsEqual(

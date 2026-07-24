@@ -63,6 +63,8 @@ describe.each(hostFactories())("Host lifecycle contract ($name)", ({ create }) =
         user: null,
         shell: null,
         hostname: null,
+        maxDurationSecs: null,
+        idleTimeoutSecs: null,
         env: {},
       }),
     );
@@ -176,6 +178,8 @@ describe.each(hostFactories())("Host stop preconditions ($name)", ({ create }) =
         user: null,
         shell: null,
         hostname: null,
+        maxDurationSecs: null,
+        idleTimeoutSecs: null,
         env: {},
       }),
       image: "alpine:3.20",
@@ -185,6 +189,8 @@ describe.each(hostFactories())("Host stop preconditions ($name)", ({ create }) =
       user: null as string | null,
       shell: null as string | null,
       hostname: null as string | null,
+      maxDurationSecs: null as number | null,
+      idleTimeoutSecs: null as number | null,
       env: {},
     };
 
@@ -247,6 +253,8 @@ describe("LocalHost uncertain create and detach", () => {
       user: null,
       shell: null,
       hostname: null,
+      maxDurationSecs: null,
+      idleTimeoutSecs: null,
       env: {},
     });
     const host = createLocalHostInternal({ runtime });

@@ -48,6 +48,12 @@ class MicrosandboxRuntime implements NativeRuntime {
       if (request.hostname !== null) {
         builder = builder.hostname(request.hostname);
       }
+      if (request.maxDurationSecs !== null) {
+        builder = builder.maxDuration(request.maxDurationSecs);
+      }
+      if (request.idleTimeoutSecs !== null) {
+        builder = builder.idleTimeout(request.idleTimeoutSecs);
+      }
       if (Object.keys(request.env).length > 0) {
         builder = builder.envs({ ...request.env });
       }
@@ -178,6 +184,8 @@ export function recordFromHandle(handle: {
     user: decoded.user,
     shell: decoded.shell,
     hostname: decoded.hostname,
+    maxDurationSecs: decoded.maxDurationSecs,
+    idleTimeoutSecs: decoded.idleTimeoutSecs,
     env: decoded.env,
     ...(handle.createdAt !== null ? { createdAt: handle.createdAt.toISOString() } : {}),
     ...(handle.updatedAt !== null ? { updatedAt: handle.updatedAt.toISOString() } : {}),

@@ -29,6 +29,8 @@ export interface SandboxImmutableCreation {
   readonly shell: string | null;
   readonly hostname: string | null;
   readonly env: Readonly<Record<string, string>>;
+  readonly maxDurationSecs: number | null;
+  readonly idleTimeoutSecs: number | null;
 }
 
 /**
@@ -89,6 +91,8 @@ export type NativeCreationEvidence = {
   readonly shell: string | null;
   readonly hostname: string | null;
   readonly env: Readonly<Record<string, string>>;
+  readonly maxDurationSecs: number | null;
+  readonly idleTimeoutSecs: number | null;
 };
 
 /**
@@ -125,6 +129,8 @@ export function nativeRecordMatchesCreation(
     readonly shell: string | null;
     readonly hostname: string | null;
     readonly env: Readonly<Record<string, string>>;
+    readonly maxDurationSecs: number | null;
+    readonly idleTimeoutSecs: number | null;
   },
   requested: SandboxImmutableCreation,
 ): boolean {
@@ -147,6 +153,12 @@ export function nativeRecordMatchesCreation(
     return false;
   }
   if (record.hostname !== requested.hostname) {
+    return false;
+  }
+  if (record.maxDurationSecs !== requested.maxDurationSecs) {
+    return false;
+  }
+  if (record.idleTimeoutSecs !== requested.idleTimeoutSecs) {
     return false;
   }
   return envMatchesAllowingSdkInjected(requested.env, record.env);
@@ -188,6 +200,8 @@ function creationFingerprint(projection: SandboxImmutableCreation): string {
     user: projection.user,
     shell: projection.shell,
     hostname: projection.hostname,
+    maxDurationSecs: projection.maxDurationSecs,
+    idleTimeoutSecs: projection.idleTimeoutSecs,
   });
   return createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 32);
 }

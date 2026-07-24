@@ -40,6 +40,10 @@ export interface HostCreateRequest {
   readonly shell?: string;
   readonly hostname?: string;
   readonly env?: Readonly<Record<string, string>>;
+  /** Native maximum lifetime in seconds. Null/omit means unset. */
+  readonly maxDurationSecs?: number | null;
+  /** Native idle timeout in seconds. Null/omit means unset. */
+  readonly idleTimeoutSecs?: number | null;
 }
 
 export interface HostListOptions extends OperationOptions {
@@ -60,6 +64,10 @@ export interface SandboxCreationSettings {
   readonly user?: string;
   readonly shell?: string;
   readonly hostname?: string;
+  /** Native maximum lifetime in seconds when set. */
+  readonly maxDurationSecs?: number;
+  /** Native idle timeout in seconds when set. */
+  readonly idleTimeoutSecs?: number;
 }
 
 export interface SandboxInspection {

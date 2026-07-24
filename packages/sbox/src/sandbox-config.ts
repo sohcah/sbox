@@ -5,6 +5,7 @@
  * - image.Oci.reference
  * - resources.cpus / resources.memoryMib
  * - runtime.workdir / user / shell / hostname (nullable)
+ * - lifecycle.maxDurationSecs / idleTimeoutSecs (nullable)
  * - env: [{ key, value }]
  * - labels: Record<string, string>
  *
@@ -26,6 +27,8 @@ export interface DecodedSandboxConfig {
   readonly user: string | null;
   readonly shell: string | null;
   readonly hostname: string | null;
+  readonly maxDurationSecs: number | null;
+  readonly idleTimeoutSecs: number | null;
   readonly env: Readonly<Record<string, string>>;
   readonly labels: Readonly<Record<string, string>>;
 }
@@ -37,6 +40,7 @@ export function decodeSandboxConfig(config: unknown): DecodedSandboxConfig {
   const root = config as Record<string, unknown>;
   const resources = asRecord(root["resources"]);
   const runtime = asRecord(root["runtime"]);
+  const lifecycle = asRecord(root["lifecycle"]);
 
   return {
     image: readOciImageReference(root["image"]),
@@ -50,6 +54,14 @@ export function decodeSandboxConfig(config: unknown): DecodedSandboxConfig {
     user: readNullableString(runtime?.["user"]),
     shell: readNullableString(runtime?.["shell"]),
     hostname: readNullableString(runtime?.["hostname"]),
+    maxDurationSecs: readNullablePositiveInt(
+      lifecycle?.["maxDurationSecs"],
+      "lifecycle.maxDurationSecs",
+    ),
+    idleTimeoutSecs: readNullablePositiveInt(
+      lifecycle?.["idleTimeoutSecs"],
+      "lifecycle.idleTimeoutSecs",
+    ),
     env: readEnvEntries(root["env"]),
     labels: readLabels(root["labels"]),
   };
@@ -65,6 +77,8 @@ export function projectDecodedConfig(decoded: DecodedSandboxConfig): SandboxImmu
     shell: decoded.shell,
     hostname: decoded.hostname,
     env: Object.freeze({ ...decoded.env }),
+    maxDurationSecs: decoded.maxDurationSecs,
+    idleTimeoutSecs: decoded.idleTimeoutSecs,
   });
 }
 
@@ -150,6 +164,16 @@ function readRequiredPositiveInt(value: unknown, path: string, fallback: number)
   }
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
     throw new Error(`${path} must be a positive integer.`);
+  }
+  return value;
+}
+
+function readNullablePositiveInt(value: unknown, path: string): number | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error(`${path} must be a positive integer or null.`);
   }
   return value;
 }

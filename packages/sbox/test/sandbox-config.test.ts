@@ -27,6 +27,8 @@ describe("decodeSandboxConfig (microsandbox@0.6.6)", () => {
     expect(decoded.user).toBe("root");
     expect(decoded.shell).toBe("/bin/sh");
     expect(decoded.hostname).toBe("probe");
+    expect(decoded.maxDurationSecs).toBeNull();
+    expect(decoded.idleTimeoutSecs).toBeNull();
     expect(decoded.env).toEqual({ FOO: "bar" });
     expect(decoded.labels).toMatchObject({
       "dev.sohcah.sbox/managed": "true",
@@ -58,6 +60,8 @@ describe("immutable creation projection", () => {
       user: null,
       shell: null,
       hostname: null,
+      maxDurationSecs: null,
+      idleTimeoutSecs: null,
       env: {},
     });
   });
@@ -122,6 +126,8 @@ describe("immutable creation projection", () => {
           user: null,
           shell: null,
           hostname: null,
+          maxDurationSecs: null,
+          idleTimeoutSecs: null,
           env: { A: "1", PATH: "/usr/bin" },
         },
         requested,
@@ -137,6 +143,8 @@ describe("immutable creation projection", () => {
           user: null,
           shell: null,
           hostname: null,
+          maxDurationSecs: null,
+          idleTimeoutSecs: null,
           env: { A: "1", EXTRA: "nope" },
         },
         requested,
@@ -152,6 +160,8 @@ describe("immutable creation projection", () => {
           user: null,
           shell: null,
           hostname: null,
+          maxDurationSecs: null,
+          idleTimeoutSecs: null,
           env: { A: "1" },
         },
         requested,

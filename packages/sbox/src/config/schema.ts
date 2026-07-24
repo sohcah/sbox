@@ -1,0 +1,182 @@
+/**
+ * Strict Zod schemas for version-1 project and user configuration.
+ */
+
+import * as z from "zod";
+import { isPortableSlug } from "../identity.js";
+import { isAbsoluteGuestPath, isBinarySize, isEnvVarName, isPositiveDuration } from "./scalars.js";
+import type { ProjectConfig, UserConfig } from "./types.js";
+
+const portableSlugSchema = z
+  .string()
+  .refine((value) => isPortableSlug(value), {
+    error: "Expected a lowercase portable slug.",
+  })
+  .describe("Portable lowercase slug.");
+
+const envVarNameSchema = z.string().refine((value) => isEnvVarName(value), {
+  error: "Expected an environment variable name matching [A-Za-z_][A-Za-z0-9_]*.",
+});
+
+const absoluteGuestPathSchema = z.string().refine((value) => isAbsoluteGuestPath(value), {
+  error: "Expected an absolute POSIX guest path.",
+});
+
+const binarySizeSchema = z.string().refine((value) => isBinarySize(value), {
+  error: 'Expected a positive binary size such as "512MiB" or "4GiB".',
+});
+
+const durationSchema = z.string().refine((value) => isPositiveDuration(value), {
+  error: 'Expected a positive duration such as "30s", "10m", or "8h".',
+});
+
+const externalValueRefSchema = z.union([
+  z.strictObject({ env: envVarNameSchema }),
+  z.strictObject({ file: z.string().min(1) }),
+  z.strictObject({ invocation: z.string().min(1) }),
+]);
+
+const configValueSchema = z.union([z.string(), externalValueRefSchema]);
+
+const volumeDeclarationSchema = z.strictObject({
+  size: binarySizeSchema,
+});
+
+/**
+ * Typed profile schema (primary API). Memory and durations are numeric seconds/MiB.
+ */
+export const profileConfigSchema = z.strictObject({
+  image: z.string().min(1),
+  cpus: z.number().int().positive().optional(),
+  memoryMiB: z.number().int().positive().optional(),
+  workdir: absoluteGuestPathSchema.optional(),
+  user: z.string().min(1).optional(),
+  shell: absoluteGuestPathSchema.optional(),
+  hostname: z.string().min(1).optional(),
+  environment: z.record(envVarNameSchema, configValueSchema).optional(),
+  maxDurationSecs: z.number().int().positive().nullable().optional(),
+  idleTimeoutSecs: z.number().int().positive().nullable().optional(),
+});
+
+export const projectConfigSchema = z
+  .strictObject({
+    version: z.literal(1),
+    project: portableSlugSchema,
+    defaultProfile: portableSlugSchema.optional(),
+    target: portableSlugSchema.optional(),
+    volumes: z.record(portableSlugSchema, volumeDeclarationSchema).optional(),
+    profiles: z
+      .record(portableSlugSchema, profileConfigSchema)
+      .refine((profiles) => Object.keys(profiles).length > 0, {
+        error: "At least one profile is required.",
+      }),
+  })
+  .superRefine((value, ctx) => {
+    if (value.defaultProfile !== undefined && !(value.defaultProfile in value.profiles)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["defaultProfile"],
+        message: `defaultProfile "${value.defaultProfile}" does not exist in profiles.`,
+      });
+    }
+  });
+
+const localTargetSchema = z.strictObject({
+  kind: z.literal("local"),
+});
+
+const remoteTargetSchema = z.strictObject({
+  kind: z.literal("remote"),
+  url: z.url({ protocol: /^https?$/ }),
+  token: externalValueRefSchema,
+});
+
+const targetConfigSchema = z.discriminatedUnion("kind", [localTargetSchema, remoteTargetSchema]);
+
+export const userConfigSchema = z
+  .strictObject({
+    version: z.literal(1),
+    defaultTarget: portableSlugSchema.optional(),
+    targets: z.record(portableSlugSchema, targetConfigSchema).default({
+      local: { kind: "local" },
+    }),
+  })
+  .superRefine((value, ctx) => {
+    if (value.defaultTarget !== undefined && !(value.defaultTarget in value.targets)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["defaultTarget"],
+        message: `defaultTarget "${value.defaultTarget}" does not exist in targets.`,
+      });
+    }
+  });
+
+/**
+ * YAML-oriented profile input. Accepts human memory/duration strings that the
+ * YAML adapter normalizes into the typed model.
+ */
+export const yamlProfileInputSchema = z.strictObject({
+  image: z.string().min(1),
+  cpus: z.number().int().positive().optional(),
+  memoryMiB: z.number().int().positive().optional(),
+  memory: binarySizeSchema.optional(),
+  workdir: absoluteGuestPathSchema.optional(),
+  user: z.string().min(1).optional(),
+  shell: absoluteGuestPathSchema.optional(),
+  hostname: z.string().min(1).optional(),
+  environment: z.record(envVarNameSchema, configValueSchema).optional(),
+  maxDurationSecs: z.number().int().positive().nullable().optional(),
+  idleTimeoutSecs: z.number().int().positive().nullable().optional(),
+  maxDuration: durationSchema.nullable().optional(),
+  idleTimeout: durationSchema.nullable().optional(),
+});
+
+export const yamlProjectInputSchema = z
+  .strictObject({
+    version: z.literal(1),
+    project: portableSlugSchema,
+    defaultProfile: portableSlugSchema.optional(),
+    target: portableSlugSchema.optional(),
+    volumes: z.record(portableSlugSchema, volumeDeclarationSchema).optional(),
+    profiles: z
+      .record(portableSlugSchema, yamlProfileInputSchema)
+      .refine((profiles) => Object.keys(profiles).length > 0, {
+        error: "At least one profile is required.",
+      }),
+  })
+  .superRefine((value, ctx) => {
+    if (value.defaultProfile !== undefined && !(value.defaultProfile in value.profiles)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["defaultProfile"],
+        message: `defaultProfile "${value.defaultProfile}" does not exist in profiles.`,
+      });
+    }
+    for (const [name, profile] of Object.entries(value.profiles)) {
+      if (profile.memory !== undefined && profile.memoryMiB !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["profiles", name, "memory"],
+          message: 'Specify only one of "memory" or "memoryMiB".',
+        });
+      }
+      if (profile.maxDuration !== undefined && profile.maxDurationSecs !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["profiles", name, "maxDuration"],
+          message: 'Specify only one of "maxDuration" or "maxDurationSecs".',
+        });
+      }
+      if (profile.idleTimeout !== undefined && profile.idleTimeoutSecs !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["profiles", name, "idleTimeout"],
+          message: 'Specify only one of "idleTimeout" or "idleTimeoutSecs".',
+        });
+      }
+    }
+  });
+
+export type YamlProjectInput = z.infer<typeof yamlProjectInputSchema>;
+export type ParsedProjectConfig = ProjectConfig;
+export type ParsedUserConfig = UserConfig;

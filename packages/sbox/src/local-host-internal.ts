@@ -78,6 +78,8 @@ class LocalHost implements Host {
           user: projected.user,
           shell: projected.shell,
           hostname: projected.hostname,
+          maxDurationSecs: projected.maxDurationSecs,
+          idleTimeoutSecs: projected.idleTimeoutSecs,
           env: projected.env,
         });
         published = true;
@@ -475,6 +477,24 @@ class LocalHost implements Host {
         details: { path: "memoryMiB" },
       });
     }
+    if (
+      request.maxDurationSecs !== undefined &&
+      request.maxDurationSecs !== null &&
+      (!Number.isInteger(request.maxDurationSecs) || request.maxDurationSecs < 1)
+    ) {
+      throw SboxError.validation("Sandbox maxDurationSecs must be a positive integer.", {
+        details: { path: "maxDurationSecs" },
+      });
+    }
+    if (
+      request.idleTimeoutSecs !== undefined &&
+      request.idleTimeoutSecs !== null &&
+      (!Number.isInteger(request.idleTimeoutSecs) || request.idleTimeoutSecs < 1)
+    ) {
+      throw SboxError.validation("Sandbox idleTimeoutSecs must be a positive integer.", {
+        details: { path: "idleTimeoutSecs" },
+      });
+    }
   }
 
   private async withOperation<T>(
@@ -543,6 +563,8 @@ function creationFromRecord(record: NativeSandboxRecord): SandboxCreationSetting
     ...(record.user !== null ? { user: record.user } : {}),
     ...(record.shell !== null ? { shell: record.shell } : {}),
     ...(record.hostname !== null ? { hostname: record.hostname } : {}),
+    ...(record.maxDurationSecs !== null ? { maxDurationSecs: record.maxDurationSecs } : {}),
+    ...(record.idleTimeoutSecs !== null ? { idleTimeoutSecs: record.idleTimeoutSecs } : {}),
   };
 }
 

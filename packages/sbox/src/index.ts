@@ -1,7 +1,9 @@
 /**
  * Public surface for `@sohcah/sbox`.
  *
- * Explicit narrow exports only. Microsandbox SDK types are never exported.
+ * Explicit allowlisted exports only. Imports come from leaf modules so private
+ * config/target/CLI plumbing cannot enter the public declaration graph.
+ * Microsandbox SDK types are never exported.
  */
 
 export { PACKAGE_NAME, PACKAGE_VERSION } from "./package-meta.js";
@@ -81,3 +83,79 @@ export type { Host } from "./host.js";
 export { disposeHost } from "./host.js";
 
 export { createLocalHost, type LocalHostOptions } from "./local-host.js";
+
+export type {
+  ConfigValue,
+  ConfigurationIssue,
+  ExternalValueRef,
+  LocalTargetConfig,
+  ProfileConfig,
+  ProjectConfig,
+  RemoteTargetConfig,
+  SafeProjectConfig,
+  SafeUserConfig,
+  TargetConfig,
+  UserConfig,
+  VolumeDeclaration,
+} from "./config/types.js";
+
+export {
+  parseProjectConfig,
+  parseUserConfig,
+  tryParseProjectConfig,
+  tryParseUserConfig,
+  parseYamlProjectInput,
+  tryParseYamlProjectInput,
+  toSafeProjectConfig,
+  toSafeUserConfig,
+  throwAccumulatedValidation,
+} from "./config/validate.js";
+
+export {
+  loadProjectConfigFromYaml,
+  loadUserConfigFromYaml,
+  tryLoadProjectConfigFromYaml,
+  tryLoadUserConfigFromYaml,
+} from "./config/yaml.js";
+
+export {
+  discoverProjectConfig,
+  discoverUserConfig,
+  type ConfigDiscoveryOptions,
+  type DiscoveredProjectConfig,
+  type DiscoveredUserConfig,
+  type DiscoverySource,
+  type PlatformKind,
+} from "./config/discovery.js";
+
+export {
+  selectProfile,
+  resolveInstanceId,
+  defaultInstanceForProfile,
+  type SelectedProfile,
+  type ProfileSelectionSource,
+} from "./config/profile.js";
+
+export type {
+  SboxClient,
+  SboxClientOptions,
+  ProfileOperationOptions,
+  ClientOperationOptions,
+  ClientListOptions,
+} from "./client/client.js";
+
+export { createSboxClient } from "./client/client.js";
+export { createSboxClientFromYaml, type YamlSboxClientOptions } from "./client/from-yaml.js";
+export type { SandboxHandle } from "./client/handle.js";
+
+/** Documented CLI operational exit codes (the runner itself is not exported). */
+export {
+  EXIT_SUCCESS,
+  EXIT_OPERATIONAL,
+  EXIT_VALIDATION,
+  EXIT_OWNERSHIP,
+  EXIT_NOT_FOUND,
+  EXIT_ALREADY_EXISTS,
+  EXIT_CANCELLED,
+  exitCodeForError,
+} from "./cli/exit-codes.js";

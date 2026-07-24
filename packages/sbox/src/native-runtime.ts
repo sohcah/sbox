@@ -19,6 +19,8 @@ export interface NativeSandboxRecord {
   readonly user: string | null;
   readonly shell: string | null;
   readonly hostname: string | null;
+  readonly maxDurationSecs: number | null;
+  readonly idleTimeoutSecs: number | null;
   /** Ordinary environment only; never logged or placed in public inspection. */
   readonly env: Readonly<Record<string, string>>;
   readonly createdAt?: string;
@@ -35,6 +37,8 @@ export interface NativeCreateRequest {
   readonly user: string | null;
   readonly shell: string | null;
   readonly hostname: string | null;
+  readonly maxDurationSecs: number | null;
+  readonly idleTimeoutSecs: number | null;
   readonly env: Readonly<Record<string, string>>;
   /** When true, create as native detached / non-ephemeral. */
   readonly detached: boolean;

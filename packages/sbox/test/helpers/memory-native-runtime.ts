@@ -65,6 +65,8 @@ export class MemoryNativeRuntime implements NativeRuntime {
           user: null,
           shell: null,
           hostname: null,
+          maxDurationSecs: null,
+          idleTimeoutSecs: null,
           env: Object.freeze({}),
         },
       });
@@ -230,6 +232,8 @@ export class MemoryNativeRuntime implements NativeRuntime {
       user: request.user,
       shell: request.shell,
       hostname: request.hostname,
+      maxDurationSecs: request.maxDurationSecs,
+      idleTimeoutSecs: request.idleTimeoutSecs,
       env: Object.freeze({ ...request.env }),
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),

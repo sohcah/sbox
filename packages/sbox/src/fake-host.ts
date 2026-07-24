@@ -41,6 +41,8 @@ interface StoredSandbox {
   state: SandboxLifecycleState;
   creation: SandboxCreationSettings;
   env: Readonly<Record<string, string>>;
+  maxDurationSecs: number | null;
+  idleTimeoutSecs: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,6 +53,8 @@ export class FakeHost implements Host {
   private readonly logger: Logger;
   private readonly now: () => Date;
   private disposed = false;
+  /** Test helper: Host method names invoked through the public Host contract. */
+  readonly operations: string[] = [];
 
   constructor(options: FakeHostOptions = {}) {
     this.logger = createRedactingLogger(options.logger ?? silentLogger);
@@ -58,6 +62,7 @@ export class FakeHost implements Host {
   }
 
   async create(request: HostCreateRequest, options?: OperationOptions): Promise<SandboxInspection> {
+    this.operations.push("create");
     return this.withOperation("create", request.identity, options, async () => {
       const identity = assertSandboxIdentity(request.identity);
       this.validateCreateRequest(request);
@@ -95,6 +100,8 @@ export class FakeHost implements Host {
         state: "running",
         creation,
         env: projected.env,
+        maxDurationSecs: projected.maxDurationSecs,
+        idleTimeoutSecs: projected.idleTimeoutSecs,
         createdAt: timestamp,
         updatedAt: timestamp,
       };
@@ -105,10 +112,12 @@ export class FakeHost implements Host {
   }
 
   async get(identity: SandboxIdentity, options?: OperationOptions): Promise<SandboxInspection> {
+    this.operations.push("get");
     return this.inspect(identity, options);
   }
 
   async list(options?: HostListOptions): Promise<readonly SandboxSummary[]> {
+    this.operations.push("list");
     return this.withOperation("list", undefined, options, async () => {
       const all = [...this.byKey.values()];
       const filtered =
@@ -125,12 +134,14 @@ export class FakeHost implements Host {
   }
 
   async inspect(identity: SandboxIdentity, options?: OperationOptions): Promise<SandboxInspection> {
+    this.operations.push("inspect");
     return this.withOperation("inspect", identity, options, async () => {
       return this.toInspection(this.require(identity));
     });
   }
 
   async start(identity: SandboxIdentity, options?: OperationOptions): Promise<SandboxInspection> {
+    this.operations.push("start");
     return this.withOperation("start", identity, options, async () => {
       const stored = this.require(identity);
       if (stored.state === "running") {
@@ -148,6 +159,7 @@ export class FakeHost implements Host {
   }
 
   async stop(identity: SandboxIdentity, options?: OperationOptions): Promise<SandboxInspection> {
+    this.operations.push("stop");
     return this.withOperation("stop", identity, options, async () => {
       const stored = this.require(identity);
       if (stored.state === "stopped") {
@@ -165,6 +177,7 @@ export class FakeHost implements Host {
   }
 
   async remove(identity: SandboxIdentity, options?: OperationOptions): Promise<void> {
+    this.operations.push("remove");
     await this.withOperation("remove", identity, options, async () => {
       const stored = this.require(identity);
       if (stored.state === "running" || stored.state === "draining") {
@@ -177,6 +190,7 @@ export class FakeHost implements Host {
   }
 
   async capabilities(options?: OperationOptions): Promise<HostCapabilities> {
+    this.operations.push("capabilities");
     return this.withOperation("capabilities", undefined, options, async () => ({
       localMicrosandbox: false,
       notes: ["FakeHost models the Phase 1 Host contract in memory."],
@@ -203,12 +217,29 @@ export class FakeHost implements Host {
       cpus: 1,
       memoryMiB: 512,
     };
+    const projected = projectCreateRequest({
+      image: creation.image,
+      cpus: creation.cpus,
+      memoryMiB: creation.memoryMiB,
+      ...(creation.workdir !== undefined ? { workdir: creation.workdir } : {}),
+      ...(creation.user !== undefined ? { user: creation.user } : {}),
+      ...(creation.shell !== undefined ? { shell: creation.shell } : {}),
+      ...(creation.hostname !== undefined ? { hostname: creation.hostname } : {}),
+      ...(creation.maxDurationSecs !== undefined
+        ? { maxDurationSecs: creation.maxDurationSecs }
+        : {}),
+      ...(creation.idleTimeoutSecs !== undefined
+        ? { idleTimeoutSecs: creation.idleTimeoutSecs }
+        : {}),
+    });
     const stored: StoredSandbox = {
       identity,
       nativeName,
       state: input.state ?? "stopped",
-      creation,
+      creation: creationFromProjection(projected),
       env: {},
+      maxDurationSecs: projected.maxDurationSecs,
+      idleTimeoutSecs: projected.idleTimeoutSecs,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -234,6 +265,8 @@ export class FakeHost implements Host {
       state: "stopped",
       creation: { image, cpus: 1, memoryMiB: 512 },
       env: {},
+      maxDurationSecs: null,
+      idleTimeoutSecs: null,
       createdAt: timestamp,
       updatedAt: timestamp,
     });
@@ -278,6 +311,8 @@ export class FakeHost implements Host {
       ...(stored.creation.user !== undefined ? { user: stored.creation.user } : {}),
       ...(stored.creation.shell !== undefined ? { shell: stored.creation.shell } : {}),
       ...(stored.creation.hostname !== undefined ? { hostname: stored.creation.hostname } : {}),
+      maxDurationSecs: stored.maxDurationSecs,
+      idleTimeoutSecs: stored.idleTimeoutSecs,
       env: stored.env,
     });
     return {
@@ -308,6 +343,24 @@ export class FakeHost implements Host {
     ) {
       throw SboxError.validation("Sandbox memoryMiB must be a positive integer.", {
         details: { path: "memoryMiB" },
+      });
+    }
+    if (
+      request.maxDurationSecs !== undefined &&
+      request.maxDurationSecs !== null &&
+      (!Number.isInteger(request.maxDurationSecs) || request.maxDurationSecs < 1)
+    ) {
+      throw SboxError.validation("Sandbox maxDurationSecs must be a positive integer.", {
+        details: { path: "maxDurationSecs" },
+      });
+    }
+    if (
+      request.idleTimeoutSecs !== undefined &&
+      request.idleTimeoutSecs !== null &&
+      (!Number.isInteger(request.idleTimeoutSecs) || request.idleTimeoutSecs < 1)
+    ) {
+      throw SboxError.validation("Sandbox idleTimeoutSecs must be a positive integer.", {
+        details: { path: "idleTimeoutSecs" },
       });
     }
   }
@@ -378,6 +431,8 @@ function creationFromProjection(
     ...(projected.user !== null ? { user: projected.user } : {}),
     ...(projected.shell !== null ? { shell: projected.shell } : {}),
     ...(projected.hostname !== null ? { hostname: projected.hostname } : {}),
+    ...(projected.maxDurationSecs !== null ? { maxDurationSecs: projected.maxDurationSecs } : {}),
+    ...(projected.idleTimeoutSecs !== null ? { idleTimeoutSecs: projected.idleTimeoutSecs } : {}),
   };
 }
 

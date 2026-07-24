@@ -15,7 +15,11 @@ Retain:
 - Automatic Docker image preparation is central to the product.
 - API-key authentication, streaming execution, and explicit file transfer are
   practical.
-- Guest-side `mkfs.ext4` avoids requiring host `e2fsprogs`, including Windows.
+- Its storage model is the correct simple starting point: one QCOW2 base,
+  disposable direct child overlays for ordinary sandboxes, and an explicit
+  maintenance shell that mounts the base itself for pre-seeding.
+- Child overlays need no persisted lineage or layer history. They are owned by
+  the sandbox and removed with it.
 
 Do not carry forward:
 
@@ -23,6 +27,11 @@ Do not carry forward:
 - Registry management unless direct SDK loading proves insufficient.
 - Large server manager objects that combine config, image, volume, lifecycle,
   transport, and Sandcastle policy.
+- Unix-only host `mkfs.ext4` discovery and in-memory-only ownership of temporary
+  child overlays.
+- Unprotected direct-base mutation. A base must not change while any child
+  depends on it, so `sbox` adds only the narrow per-base exclusivity and native
+  maintenance recovery specified in `system-plan.md`.
 
 ## sohcah-msb
 
@@ -55,7 +64,11 @@ Retain:
 - Native HTTP plus `ws` is adequate for remote transport.
 - SDK lifecycle works on macOS and Windows under an isolated short `MSB_HOME`.
 - QCOW2 testing proved the stopped-handle detach requirement.
-- Guest-side ext4 formatting works across tested hosts.
+- The Windows-oriented spike proved the portable formatting approach: expose a
+  blank raw host file to a disposable formatter guest, run `mkfs.ext4` there,
+  then convert it to QCOW2 with host `qemu-img`.
+- Persisted Microsandbox configuration retains exact external disk paths across
+  fresh lookup/process restart; native removal does not delete those files.
 - Strict declaration-leak and deterministic test gates are valuable.
 
 Do not carry forward:
@@ -80,4 +93,3 @@ Copying code is not the default. For each reused module:
 Research notes and platform evidence may be copied with provenance. Production
 modules should normally be reintroduced through the new implementation phases
 rather than wholesale.
-

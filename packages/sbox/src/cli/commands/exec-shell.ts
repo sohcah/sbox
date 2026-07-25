@@ -15,6 +15,7 @@ import { isSboxError } from "../../errors.js";
 export interface ExecCommandOptions {
   readonly profile?: string;
   readonly argv: readonly string[];
+  readonly shell?: boolean;
   readonly cwd?: string;
   readonly user?: string;
   readonly stdin?: string;
@@ -23,11 +24,8 @@ export interface ExecCommandOptions {
 
 export interface ShellCommandOptions {
   readonly profile?: string;
-  readonly script: string;
   readonly cwd?: string;
   readonly user?: string;
-  readonly stdin?: string;
-  readonly stream?: boolean;
 }
 
 export async function runExec(ctx: CliContext, options: ExecCommandOptions): Promise<number> {
@@ -65,8 +63,12 @@ export async function runExec(ctx: CliContext, options: ExecCommandOptions): Pro
         : {}),
     };
 
+    const shellPath = selected.profile.shell ?? "/bin/sh";
+    const script = options.argv.join(" ");
     if (options.stream) {
-      const session = await handle.execStream(options.argv, streamOptions);
+      const session = options.shell
+        ? await handle.shellStream(script, { ...streamOptions, shell: shellPath })
+        : await handle.execStream(options.argv, streamOptions);
       try {
         return await streamProcess(ctx, command, session);
       } finally {
@@ -74,7 +76,9 @@ export async function runExec(ctx: CliContext, options: ExecCommandOptions): Pro
       }
     }
 
-    const result = await handle.exec(options.argv, collectedOptions);
+    const result = options.shell
+      ? await handle.shell(script, { ...collectedOptions, shell: shellPath })
+      : await handle.exec(options.argv, collectedOptions);
     return emitCollected(ctx, command, result);
   } catch (error) {
     writeResult(ctx, formatCliResult(cliErrorResult(command, error), ctx.format));
@@ -101,41 +105,62 @@ export async function runShell(ctx: CliContext, options: ShellCommandOptions): P
         : selected.profile.user !== undefined
           ? { user: selected.profile.user }
           : {};
-    const collectedOptions = {
-      shell: shellPath,
+    const size = ctx.io.terminalSize?.() ?? { rows: 24, cols: 80 };
+    const terminalEnv = {
+      TERM: ctx.io.env["TERM"] ?? "xterm-256color",
+      ...(ctx.io.env["COLORTERM"] !== undefined ? { COLORTERM: ctx.io.env["COLORTERM"] } : {}),
+    };
+    const attached = await handle.attachTerminal([shellPath], {
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
       ...userOpt,
-      ...(options.stdin !== undefined ? { stdin: options.stdin } : {}),
-    };
-    const streamOptions = {
-      shell: shellPath,
-      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
-      ...userOpt,
-      ...(options.stdin !== undefined
-        ? {
-            stdin: (async function* () {
-              yield utf8ToBytes(options.stdin!);
-            })(),
-          }
-        : {}),
-    };
-
-    if (options.stream) {
-      const session = await handle.shellStream(options.script, streamOptions);
-      try {
-        return await streamProcess(ctx, command, session);
-      } finally {
-        await session[Symbol.asyncDispose]();
-      }
+      env: terminalEnv,
+    });
+    if (attached !== undefined) {
+      return attached;
     }
-
-    const result = await handle.shell(options.script, collectedOptions);
-    return emitCollected(ctx, command, result);
+    const session = await handle.pty([shellPath], {
+      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+      ...userOpt,
+      env: terminalEnv,
+      rows: size.rows,
+      cols: size.cols,
+      ...(ctx.io.stdin !== undefined ? { input: toByteInput(ctx.io.stdin) } : {}),
+    });
+    let removeResizeListener: (() => void) | undefined;
+    let leaveRawMode: (() => void) | undefined;
+    try {
+      removeResizeListener = ctx.io.onTerminalResize?.(() => {
+        const next = ctx.io.terminalSize?.() ?? { rows: 24, cols: 80 };
+        void session.resize(next);
+      });
+      leaveRawMode = ctx.io.enterRawMode?.();
+      const output = pumpPtyOutput(ctx, session.output);
+      const exit = await session.wait();
+      await output;
+      return exit.exitCode;
+    } finally {
+      leaveRawMode?.();
+      removeResizeListener?.();
+      ctx.io.stopStdin?.();
+      await session[Symbol.asyncDispose]();
+    }
   } catch (error) {
     writeResult(ctx, formatCliResult(cliErrorResult(command, error), ctx.format));
     return exitCodeForError(error);
   } finally {
     await client[Symbol.asyncDispose]();
+  }
+}
+
+async function* toByteInput(input: AsyncIterable<string | Uint8Array>): AsyncIterable<Uint8Array> {
+  for await (const chunk of input) {
+    yield typeof chunk === "string" ? utf8ToBytes(chunk) : chunk;
+  }
+}
+
+async function pumpPtyOutput(ctx: CliContext, output: AsyncIterable<Uint8Array>): Promise<void> {
+  for await (const chunk of output) {
+    ctx.io.stdout.write(Buffer.from(chunk));
   }
 }
 

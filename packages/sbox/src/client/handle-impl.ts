@@ -3,7 +3,7 @@
  * Not part of the public package declaration graph.
  */
 
-import type { Host } from "../host.js";
+import type { Host, HostTerminalAttachOptions } from "../host.js";
 import type { SandboxIdentity } from "../identity.js";
 import type {
   HostCollectedExecOptions,
@@ -92,6 +92,14 @@ export class HostSandboxHandle implements SandboxHandle {
   async pty(argv: readonly string[], options?: HostPtyOptions): Promise<PtySession> {
     this.ensureOpen();
     return this.host.pty({ identity: this.identity, argv }, options);
+  }
+
+  async attachTerminal(
+    argv: readonly string[],
+    options?: HostTerminalAttachOptions,
+  ): Promise<number | undefined> {
+    this.ensureOpen();
+    return this.host.attachTerminal?.({ identity: this.identity, argv }, options);
   }
 
   async copyToGuest(hostPath: string, guestPath: string, options?: HostCopyOptions): Promise<void> {

@@ -165,8 +165,9 @@ Implement:
   bounded safe archives where needed;
 - traversal, file/directory conflict, executable-bit, safe-symlink, special-file,
   overwrite, and atomic-publication behavior;
-- CLI `exec` and `shell`, including guest exit-code propagation and NDJSON live
-  events.
+- CLI exact-argv `exec`, explicit `exec --shell` interpretation, and interactive
+  PTY `shell`, including guest exit-code propagation and NDJSON live events for
+  streaming exec.
 
 Tests and evidence:
 
@@ -190,9 +191,11 @@ process/transfer primitive later required by remote transport and Sandcastle.
   (`cwd` / `user` / `env` / `timeout` / `stdinPipe`). Guest shell is always
   explicit argv `[shell, "-c", script]` (default `/bin/sh`).
 - Collection bounds default to 10 MiB per stream via `DEFAULT_OUTPUT_LIMIT_BYTES`.
-- Interactive PTY uses a private agent-protocol adapter over `AgentClient`
-  (`core.exec.request` with `tty: true`, empty stdin = EOF, resize via
-  `core.exec.resize`). Documented in `patches/README.md` with upstream
+- Interactive library PTY uses a private agent-protocol adapter over
+  `AgentClient` (`core.exec.request` with `tty: true`, empty stdin = EOF,
+  resize via `core.exec.resize`). CLI `shell` uses the pinned SDK's
+  terminal-bound `attach*` API for local targets and the stream PTY bridge for
+  hosts without native attach. Documented in `patches/README.md` with upstream
   replacement condition. Protocol generation for 0.6.6 is `v: 6`.
 - Transfer walks host/guest trees over `copyFromHost` / `copyToHost` /
   `read` / `write` / `list` / `stat`, plus private agent FS helpers for
@@ -207,8 +210,10 @@ process/transfer primitive later required by remote transport and Sandcastle.
   never hangs on a pending `next()`.
 - PTY honors `timeoutMs` with a distinct `timeout` error (separate from
   `cancel`).
-- CLI: `sbox exec [profile] -- <argv...>` and `sbox shell [profile] -- <script>`
-  with `--stream`, `--cwd`, `--user`, guest exit-code propagation, and NDJSON.
+- CLI: `sbox exec [profile] -- <argv...>` for exact argv,
+  `sbox exec [profile] --shell -- <expression>` for non-interactive guest-shell
+  syntax, and interactive PTY `sbox shell [profile]`; exec supports `--stream`,
+  `--cwd`, `--user`, guest exit-code propagation, and NDJSON.
 - Real process/PTY/transfer acceptance:
   `packages/sbox/test/process.acceptance.test.ts` under `pnpm test:acceptance`
   with an isolated short disposable `MSB_HOME`.

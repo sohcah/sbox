@@ -3,6 +3,7 @@
  */
 
 import type { SandboxIdentity } from "../identity.js";
+import type { HostTerminalAttachOptions } from "../host.js";
 import type {
   HostCollectedExecOptions,
   HostPtyOptions,
@@ -36,6 +37,11 @@ export interface SandboxHandle extends AsyncDisposable {
   ): Promise<ProcessSession>;
   /** Interactive PTY with arbitrary streams, resize, and merged output. */
   pty(argv: readonly string[], options?: HostPtyOptions): Promise<PtySession>;
+  /** Attach the current terminal directly when supported by the selected host. */
+  attachTerminal(
+    argv: readonly string[],
+    options?: HostTerminalAttachOptions,
+  ): Promise<number | undefined>;
 
   copyToGuest(hostPath: string, guestPath: string, options?: HostCopyOptions): Promise<void>;
   copyFromGuest(guestPath: string, hostPath: string, options?: HostCopyOptions): Promise<void>;

@@ -56,6 +56,12 @@ export interface HostPtyRequest {
   readonly argv: readonly string[];
 }
 
+export interface HostTerminalAttachOptions extends OperationOptions {
+  readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly user?: string;
+}
+
 export interface HostCopyPaths {
   readonly identity: SandboxIdentity;
   readonly hostPath: string;
@@ -116,6 +122,14 @@ export interface Host extends AsyncDisposable {
     request: HostExecShellRequest,
     options?: HostStreamingExecOptions,
   ): Promise<ProcessSession>;
+  /**
+   * Attach the current host terminal directly when supported.
+   * Returns `undefined` when the host requires stream-based PTY bridging.
+   */
+  attachTerminal?(
+    request: HostPtyRequest,
+    options?: HostTerminalAttachOptions,
+  ): Promise<number | undefined>;
   pty(request: HostPtyRequest, options?: HostPtyOptions): Promise<PtySession>;
 
   copyHostToGuest(request: HostCopyPaths, options?: HostCopyOptions): Promise<void>;

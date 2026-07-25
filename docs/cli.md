@@ -29,8 +29,8 @@ Binary: `sbox` (`@sohcah/sbox`).
 | `inspect <profile>` | Inspect selected profile/instance |
 | `stop <profile>` | Stop |
 | `remove <profile>` | Exact remove (no prompt, no prune) |
-| `exec [profile] [--cwd] [--user] [--stream] -- <argv…>` | Exact argv on existing sandbox |
-| `shell [profile] [--cwd] [--user] [--stream] -- <script>` | Guest shell script |
+| `exec [profile] [--cwd] [--user] [--stream] [--shell] -- <argv…>` | Exact argv, or an explicit guest-shell expression with `--shell` |
+| `shell [profile] [--cwd] [--user]` | Open the profile shell in an interactive PTY |
 | `image list` / `image remove <exact> [--force]` | Managed images |
 | `volume list` / `volume shell <profile> <volume>` / `volume remove <volume>` | Managed QCOW2 bases |
 
@@ -50,6 +50,16 @@ Destructive commands warn in docs and refuse ambiguity; they never prompt.
 
 Collected `--json` emits exactly one result object. `--stream --json` emits
 typed NDJSON events; operational failures remain structured errors.
+
+`shell` is always interactive. Local targets use Microsandbox's native terminal
+attachment; other hosts connect terminal input in raw mode, merged output, and
+resize events through the portable PTY bridge. Terminal mode is restored on
+exit. It does not accept `--json`, `--stream`, or a script after `--`. For
+pipelines, redirects, and other non-interactive shell syntax, use:
+
+```bash
+sbox exec default --shell -- 'printf "%s\n" hello | sed s/hello/world/'
+```
 
 ## Serve
 

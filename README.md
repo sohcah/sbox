@@ -120,16 +120,20 @@ sandbox.
 
 ### Process and transfer notes
 
-- Exact argv never passes through a host or guest shell. Use `shell` /
-  `execShell` for guest-shell interpretation (`profile.shell`, default
-  `/bin/sh`).
+- Exact argv never passes through a host or guest shell. Use CLI
+  `exec --shell -- <expression>` or library `handle.shell(...)` for
+  guest-shell interpretation (`profile.shell`, default `/bin/sh`).
+- CLI `shell [profile]` opens the configured profile shell interactively. Local
+  targets use Microsandbox's native terminal attach; other hosts use the
+  portable PTY stream bridge.
 - Collected stdout/stderr default to 10 MiB each; overflow cancels the process
   and throws `output_limit`.
 - Streaming events are byte-oriented: `started` / `stdout` / `stderr` /
   `exited`. UTF-8 and line helpers are optional.
 - PTY supports arbitrary Node streams, merged output, resize, and cancellation.
-  The pinned SDK `attach*` API is terminal-bound; PTY uses an isolated private
-  agent-protocol adapter (see `patches/README.md`).
+  The library PTY and non-local CLI fallback use an isolated private
+  agent-protocol adapter; local CLI shells use the pinned SDK's terminal-bound
+  `attach*` API (see `patches/README.md`).
 - Transfers preserve bytes, executable bits, and safe symlinks. They reject
   traversal, escaping links, and special files. Ownership and timestamps are
   not preserved.

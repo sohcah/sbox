@@ -18,7 +18,8 @@ a **bounded helper** in `sbox`, or a **deliberate exclusion** (`docs/non-goals.m
 | QCOW2 base + child overlay | Helper + qemu-img + formatter | One lock per base |
 | `volume shell` exclusive base | Helper | Maintenance only |
 | Exact argv exec / stream | Delegation | Byte events |
-| Guest shell exec | Helper | `[shell,-c,script]` |
+| Guest shell exec | Helper | `exec --shell` → `[shell,-c,script]` |
+| Interactive CLI shell | Native local attach / PTY fallback | Profile shell, terminal input/resize |
 | Collected UTF-8 / limits | Helper | Default 10 MiB |
 | PTY | Helper | Private agent protocol adapter |
 | File/dir transfer | Helper | Archive for remote; no sync/watch |

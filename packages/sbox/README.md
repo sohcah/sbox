@@ -10,6 +10,8 @@ all other routes and WebSocket upgrades require Bearer auth.
 
 CLI highlights: `init`, `config`, `doctor`, `serve`, `build`, `up`, `run`,
 `list`, `inspect`, `stop`, `remove`, `exec`, `shell`, `image`, `volume`.
+`shell [profile]` opens an interactive PTY; use `exec --shell -- <expression>`
+for non-interactive guest-shell syntax.
 
 `doctor` reports required checks (Node, protocol, target/handshake) and
 informational tooling (Docker, qemu-img, formatter image) so remote-client

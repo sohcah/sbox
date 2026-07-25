@@ -7,8 +7,13 @@ import type { Logger } from "../logging.js";
 import type { CliOutputFormat } from "./format.js";
 
 export interface CliIo {
+  readonly stdin?: AsyncIterable<string | Uint8Array>;
   readonly stdout: { write(chunk: string | Uint8Array): void };
   readonly stderr: { write(chunk: string | Uint8Array): void };
+  readonly terminalSize?: () => { readonly rows: number; readonly cols: number };
+  readonly onTerminalResize?: (listener: () => void) => () => void;
+  readonly enterRawMode?: () => () => void;
+  readonly stopStdin?: () => void;
   readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly homeDir?: string;

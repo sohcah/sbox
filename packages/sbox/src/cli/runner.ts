@@ -47,8 +47,8 @@ Usage:
   sbox volume list
   sbox volume shell <profile> <volume>
   sbox volume remove <volume>
-  sbox exec [profile] [--cwd <path>] [--user <name>] [--stream] -- <argv...>
-  sbox shell [profile] [--cwd <path>] [--user <name>] [--stream] -- <script>
+  sbox exec [profile] [--cwd <path>] [--user <name>] [--stream] [--shell] -- <argv...>
+  sbox shell [profile] [--cwd <path>] [--user <name>]
 
 Global flags:
   --json                 Emit JSON (single object, or NDJSON events with --stream)
@@ -56,6 +56,7 @@ Global flags:
   --user-config <path>   Explicit user config path
   --target <name>        Explicit target name
   --instance <slug>      Explicit portable instance identity
+  --shell                Interpret exec arguments as a guest-shell expression
   -h, --help             Show help
 
 Exit codes:
@@ -92,6 +93,7 @@ export async function runCli(options: RunCliOptions): Promise<number> {
         cwd: { type: "string" },
         user: { type: "string" },
         stream: { type: "boolean", default: false },
+        shell: { type: "boolean", default: false },
         bind: { type: "string" },
         port: { type: "string" },
         "token-env": { type: "string" },
@@ -277,20 +279,24 @@ export async function runCli(options: RunCliOptions): Promise<number> {
           ...(typeof values["cwd"] === "string" ? { cwd: values["cwd"] } : {}),
           ...(typeof values["user"] === "string" ? { user: values["user"] } : {}),
           stream: values["stream"] === true,
+          shell: values["shell"] === true,
         });
       }
       case "shell": {
-        if (afterSep.length === 0) {
-          throw SboxError.validation("shell requires `-- <script>`.", {
+        if (afterSep.length > 0) {
+          throw SboxError.validation("shell is interactive and does not accept a script.", {
+            details: { path: "argv" },
+          });
+        }
+        if (values["json"] === true || values["stream"] === true || values["shell"] === true) {
+          throw SboxError.validation("shell does not support --json, --stream, or --shell.", {
             details: { path: "argv" },
           });
         }
         return await runShell(ctx, {
           ...(rest[0] !== undefined ? { profile: rest[0] } : {}),
-          script: afterSep.join(" "),
           ...(typeof values["cwd"] === "string" ? { cwd: values["cwd"] } : {}),
           ...(typeof values["user"] === "string" ? { user: values["user"] } : {}),
-          stream: values["stream"] === true,
         });
       }
       default:

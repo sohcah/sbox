@@ -129,7 +129,7 @@ describe("CLI exec/shell with FakeHost", () => {
     expect(code).toBe(EXIT_CANCELLED);
   });
 
-  it("keeps exact argv distinct from shell interpretation", async () => {
+  it("keeps exact argv distinct from explicit shell interpretation", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-cli-argv-"));
     await writeProject(root);
     const host = new FakeHost();
@@ -150,13 +150,95 @@ describe("CLI exec/shell with FakeHost", () => {
     const shellIo = collectingIo(root);
     expect(
       await runCli({
-        argv: ["shell", "default", "--", "echo", "a b"],
+        argv: ["exec", "default", "--shell", "--", "echo", "a b"],
         io: shellIo.io,
         host,
       }),
     ).toBe(EXIT_SUCCESS);
-    // shell joins after `--` into one script string.
+    // --shell joins after `--` into one guest-shell expression.
     expect(shellIo.stdoutText()).toBe("shell:echo a b");
+  });
+
+  it("opens the profile shell through an interactive PTY", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sbox-cli-shell-"));
+    await writeProject(root);
+    const host = new FakeHost();
+    await seedDefault(host);
+    const collected = collectingIo(root);
+    let resizeListener: (() => void) | undefined;
+    let rawMode = false;
+    let stdinStopped = false;
+    const code = await runCli({
+      argv: ["shell", "default"],
+      io: {
+        ...collected.io,
+        stdin: (async function* () {
+          yield "interactive-input";
+        })(),
+        terminalSize: () => ({ rows: 30, cols: 100 }),
+        onTerminalResize: (listener) => {
+          resizeListener = listener;
+          return () => {
+            resizeListener = undefined;
+          };
+        },
+        enterRawMode: () => {
+          rawMode = true;
+          return () => {
+            rawMode = false;
+          };
+        },
+        stopStdin: () => {
+          stdinStopped = true;
+        },
+      },
+      host,
+    });
+    expect(code).toBe(EXIT_SUCCESS);
+    expect(collected.stdoutText()).toContain("interactive-input");
+    expect(host.operations).toContain("pty");
+    expect(resizeListener).toBeUndefined();
+    expect(rawMode).toBe(false);
+    expect(stdinStopped).toBe(true);
+  });
+
+  it("prefers native terminal attachment when the host supports it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sbox-cli-native-shell-"));
+    await writeProject(root);
+    let attachCalls = 0;
+    const host = Object.assign(new FakeHost(), {
+      attachTerminal: async () => {
+        attachCalls += 1;
+        return 7;
+      },
+    });
+    await seedDefault(host);
+    const collected = collectingIo(root);
+
+    const code = await runCli({
+      argv: ["shell", "default"],
+      io: collected.io,
+      host,
+    });
+
+    expect(code).toBe(7);
+    expect(attachCalls).toBe(1);
+    expect(host.operations).not.toContain("pty");
+  });
+
+  it("rejects scripts passed to interactive shell", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sbox-cli-shell-script-"));
+    await writeProject(root);
+    const host = new FakeHost();
+    await seedDefault(host);
+    const collected = collectingIo(root);
+    const code = await runCli({
+      argv: ["shell", "default", "--", "echo", "no"],
+      io: collected.io,
+      host,
+    });
+    expect(code).not.toBe(EXIT_SUCCESS);
+    expect(collected.stdoutText()).toContain("shell is interactive");
   });
 
   it("emits base64 stdout/stderr for collected --json exec", async () => {

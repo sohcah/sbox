@@ -6,6 +6,7 @@
  */
 
 import { SboxError, isSboxError, throwIfAborted, wrapUnknownFailure } from "./errors.js";
+import { Sandbox } from "microsandbox";
 import type { Host } from "./host.js";
 import {
   assertProjectId,
@@ -56,6 +57,7 @@ import type {
   HostExecArgvRequest,
   HostExecShellRequest,
   HostPtyRequest,
+  HostTerminalAttachOptions,
 } from "./host.js";
 import { startAgentPty } from "./internal/agent-pty.js";
 import {
@@ -804,6 +806,38 @@ class LocalHost implements Host {
         ...(options?.signal !== undefined ? { signal: options.signal } : {}),
         ...(options?.input !== undefined ? { input: options.input } : {}),
       });
+    });
+  }
+
+  async attachTerminal(
+    request: HostPtyRequest,
+    options?: HostTerminalAttachOptions,
+  ): Promise<number> {
+    return this.withOperation("attachTerminal", request.identity, options, async () => {
+      const nativeName = await this.requireRunningNativeName(request.identity, options?.signal);
+      const [command, ...args] = request.argv;
+      if (command === undefined || command.length === 0) {
+        throw SboxError.validation("Terminal attach argv must not be empty.");
+      }
+      const handle = await Sandbox.get(nativeName);
+      const sandbox = await handle.connect();
+      try {
+        return await sandbox.attachWith(command, (builder) => {
+          builder.args(args);
+          if (options?.cwd !== undefined) {
+            builder.cwd(options.cwd);
+          }
+          if (options?.user !== undefined) {
+            builder.user(options.user);
+          }
+          if (options?.env !== undefined) {
+            builder.envs({ ...options.env });
+          }
+          return builder;
+        });
+      } finally {
+        await sandbox[Symbol.asyncDispose]();
+      }
     });
   }
 

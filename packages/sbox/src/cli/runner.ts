@@ -7,6 +7,7 @@ import { SboxError } from "../errors.js";
 import type { Host } from "../host.js";
 import type { Logger } from "../logging.js";
 import { runConfigShow, runConfigValidate } from "./commands/config.js";
+import { runExec, runShell } from "./commands/exec-shell.js";
 import { runInit } from "./commands/init.js";
 import { runInspect, runList, runRemove, runStop, runUp } from "./commands/lifecycle.js";
 import type { CliContext, CliGlobalFlags, CliIo } from "./context.js";
@@ -32,23 +33,38 @@ Usage:
   sbox inspect <profile>
   sbox stop <profile>
   sbox remove <profile>
+  sbox exec [profile] [--cwd <path>] [--user <name>] [--stream] -- <argv...>
+  sbox shell [profile] [--cwd <path>] [--user <name>] [--stream] -- <script>
 
 Global flags:
-  --json                 Emit a single JSON result object
+  --json                 Emit JSON (single object, or NDJSON events with --stream)
   --config <path>        Explicit project sbox.yaml path
   --user-config <path>   Explicit user config path
   --target <name>        Explicit target name
   --instance <slug>      Explicit portable instance identity
   -h, --help             Show help
+
+Exit codes:
+  0 success / guest exit code for exec and shell
+  1 operational failure
+  2 validation / configuration error
+  3 ownership conflict or creation drift
+  4 not found
+  5 already exists
+  130 cancellation
 `;
 
 export async function runCli(options: RunCliOptions): Promise<number> {
   const argv = [...options.argv];
+  const separator = argv.indexOf("--");
+  const beforeSep = separator >= 0 ? argv.slice(0, separator) : argv;
+  const afterSep = separator >= 0 ? argv.slice(separator + 1) : [];
+
   let values: ReturnType<typeof parseArgs>["values"];
   let positionals: string[];
   try {
     const parsed = parseArgs({
-      args: argv,
+      args: beforeSep,
       allowPositionals: true,
       strict: true,
       options: {
@@ -59,6 +75,9 @@ export async function runCli(options: RunCliOptions): Promise<number> {
         instance: { type: "string" },
         force: { type: "boolean", default: false },
         project: { type: "string" },
+        cwd: { type: "string" },
+        user: { type: "string" },
+        stream: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -153,6 +172,34 @@ export async function runCli(options: RunCliOptions): Promise<number> {
           });
         }
         return await runRemove(ctx, profile);
+      }
+      case "exec": {
+        if (afterSep.length === 0) {
+          throw SboxError.validation("exec requires `-- <argv...>`.", {
+            details: { path: "argv" },
+          });
+        }
+        return await runExec(ctx, {
+          ...(rest[0] !== undefined ? { profile: rest[0] } : {}),
+          argv: afterSep,
+          ...(typeof values["cwd"] === "string" ? { cwd: values["cwd"] } : {}),
+          ...(typeof values["user"] === "string" ? { user: values["user"] } : {}),
+          stream: values["stream"] === true,
+        });
+      }
+      case "shell": {
+        if (afterSep.length === 0) {
+          throw SboxError.validation("shell requires `-- <script>`.", {
+            details: { path: "argv" },
+          });
+        }
+        return await runShell(ctx, {
+          ...(rest[0] !== undefined ? { profile: rest[0] } : {}),
+          script: afterSep.join(" "),
+          ...(typeof values["cwd"] === "string" ? { cwd: values["cwd"] } : {}),
+          ...(typeof values["user"] === "string" ? { user: values["user"] } : {}),
+          stream: values["stream"] === true,
+        });
       }
       default:
         throw SboxError.validation(`Unknown command ${JSON.stringify(command)}.`, {

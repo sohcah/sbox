@@ -112,6 +112,30 @@ describe("declaration leak guard", () => {
     expect(combined).not.toMatch(/\bCliIo\b/);
     expect(combined).not.toMatch(/\bCliContext\b/);
     expect(combined).not.toMatch(/readonly token: string/);
+    expect(combined).not.toMatch(/\bagent-protocol\b/);
+    expect(combined).not.toMatch(/\bAGENT_PROTOCOL_VERSION\b/);
+    expect(combined).not.toMatch(/\bencodeEnvelope\b/);
+    expect(combined).not.toMatch(/\bencodeExecRequest\b/);
+    expect(combined).not.toMatch(/\bMSG_EXEC_REQUEST\b/);
+    expect(combined).not.toMatch(/\bagent-pty\b/);
+    expect(combined).not.toMatch(/\bagent-fs\b/);
+    expect(combined).not.toMatch(/\bstartAgentPty\b/);
+    expect(combined).not.toMatch(/\bFakeSandboxFilesystem\b/);
+    expect(combined).not.toMatch(/\bdefaultFakeExec\b/);
+    expect(combined).not.toMatch(/\bfake-process\b/);
+    expect(combined).not.toMatch(/\blocal-process\b/);
+    expect(combined).not.toMatch(/\blocal-transfer\b/);
+    expect(combined).not.toMatch(/\bARCHIVE_FORMAT_VERSION\b/);
+    expect(combined).not.toMatch(/\bcreateTransferArchive\b/);
+    expect(combined).not.toMatch(/\bvalidateEntries\b/);
+    expect(combined).not.toMatch(/\bTransferArchive\b/);
+    expect(combined).not.toMatch(/\bTransferEntry\b/);
+    expect(combined).not.toMatch(/\bassertRelativeTransferPath\b/);
+    expect(combined).not.toMatch(/\bisSafeSymlinkTarget\b/);
+    expect(combined).not.toMatch(/\bBoundedAsyncQueue\b/);
+    expect(combined).not.toMatch(/\bpublishHostPath\b/);
+    expect(combined).not.toMatch(/\bcreateSdkProcessSession\b/);
+    expect(combined).not.toMatch(/\bcreateAgentPtySession\b/);
 
     const consumerDir = await mkdtemp(join(tmpdir(), "sbox-consumer-"));
     try {

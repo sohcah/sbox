@@ -6,10 +6,21 @@ import {
   isSboxError,
   parseProjectConfig,
   type Host,
+  type HostCopyPaths,
   type HostCreateRequest,
+  type HostExecArgvRequest,
+  type HostExecShellRequest,
   type HostListOptions,
+  type HostPtyRequest,
+  type HostCollectedExecOptions,
+  type HostCopyOptions,
+  type HostPtyOptions,
+  type HostStreamingExecOptions,
   type OperationOptions,
+  type ProcessResult,
+  type ProcessSession,
   type ProjectConfig,
+  type PtySession,
   type SandboxIdentity,
   type SandboxInspection,
   type SandboxSummary,
@@ -77,6 +88,46 @@ class RecordingHost implements Host {
   }
   capabilities(options?: OperationOptions) {
     return this.inner.capabilities(this.record(options));
+  }
+  execArgv(
+    request: HostExecArgvRequest,
+    options?: HostCollectedExecOptions,
+  ): Promise<ProcessResult> {
+    this.record(options);
+    return this.inner.execArgv(request, options);
+  }
+  execArgvStream(
+    request: HostExecArgvRequest,
+    options?: HostStreamingExecOptions,
+  ): Promise<ProcessSession> {
+    this.record(options);
+    return this.inner.execArgvStream(request, options);
+  }
+  execShell(
+    request: HostExecShellRequest,
+    options?: HostCollectedExecOptions,
+  ): Promise<ProcessResult> {
+    this.record(options);
+    return this.inner.execShell(request, options);
+  }
+  execShellStream(
+    request: HostExecShellRequest,
+    options?: HostStreamingExecOptions,
+  ): Promise<ProcessSession> {
+    this.record(options);
+    return this.inner.execShellStream(request, options);
+  }
+  pty(request: HostPtyRequest, options?: HostPtyOptions): Promise<PtySession> {
+    this.record(options);
+    return this.inner.pty(request, options);
+  }
+  copyHostToGuest(request: HostCopyPaths, options?: HostCopyOptions): Promise<void> {
+    this.record(options);
+    return this.inner.copyHostToGuest(request, options);
+  }
+  copyGuestToHost(request: HostCopyPaths, options?: HostCopyOptions): Promise<void> {
+    this.record(options);
+    return this.inner.copyGuestToHost(request, options);
   }
   [Symbol.asyncDispose](): Promise<void> {
     return this.inner[Symbol.asyncDispose]();

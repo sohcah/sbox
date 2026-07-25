@@ -21,10 +21,33 @@ import { buildOwnershipLabels, matchOwnedCreation } from "./ownership-adoption.j
 import { inspectOwnershipLabels, type LabelMap } from "./ownership.js";
 import { projectCreateRequest, type ImmutableCreationProjection } from "./immutable-creation.js";
 import type {
+  HostCopyPaths,
+  HostExecArgvRequest,
+  HostExecShellRequest,
+  HostPtyRequest,
+} from "./host.js";
+import { startAgentPty } from "./internal/agent-pty.js";
+import {
+  execArgvCollected,
+  execArgvStream,
+  execShellCollected,
+  execShellStream,
+} from "./local-process.js";
+import { copyGuestToHost, copyHostToGuest } from "./local-transfer.js";
+import type {
+  HostCollectedExecOptions,
+  HostPtyOptions,
+  HostStreamingExecOptions,
+  ProcessSession,
+  PtySession,
+} from "./process/session.js";
+import type { HostCopyOptions } from "./transfer/types.js";
+import type {
   HostCapabilities,
   HostCreateRequest,
   HostListOptions,
   OperationOptions,
+  ProcessResult,
   SandboxCreationSettings,
   SandboxInspection,
   SandboxSummary,
@@ -253,6 +276,84 @@ class LocalHost implements Host {
     });
   }
 
+  async execArgv(
+    request: HostExecArgvRequest,
+    options?: HostCollectedExecOptions,
+  ): Promise<ProcessResult> {
+    return this.withOperation("execArgv", request.identity, options, async () => {
+      const nativeName = await this.requireRunningNativeName(request.identity, options?.signal);
+      return execArgvCollected(nativeName, request.argv, options);
+    });
+  }
+
+  async execArgvStream(
+    request: HostExecArgvRequest,
+    options?: HostStreamingExecOptions,
+  ): Promise<ProcessSession> {
+    return this.withOperation("execArgvStream", request.identity, options, async () => {
+      const nativeName = await this.requireRunningNativeName(request.identity, options?.signal);
+      return execArgvStream(nativeName, request.argv, options);
+    });
+  }
+
+  async execShell(
+    request: HostExecShellRequest,
+    options?: HostCollectedExecOptions,
+  ): Promise<ProcessResult> {
+    return this.withOperation("execShell", request.identity, options, async () => {
+      const nativeName = await this.requireRunningNativeName(request.identity, options?.signal);
+      return execShellCollected(nativeName, request.script, {
+        ...options,
+        ...(request.shell !== undefined ? { shell: request.shell } : {}),
+      });
+    });
+  }
+
+  async execShellStream(
+    request: HostExecShellRequest,
+    options?: HostStreamingExecOptions,
+  ): Promise<ProcessSession> {
+    return this.withOperation("execShellStream", request.identity, options, async () => {
+      const nativeName = await this.requireRunningNativeName(request.identity, options?.signal);
+      return execShellStream(nativeName, request.script, {
+        ...options,
+        ...(request.shell !== undefined ? { shell: request.shell } : {}),
+      });
+    });
+  }
+
+  async pty(request: HostPtyRequest, options?: HostPtyOptions): Promise<PtySession> {
+    return this.withOperation("pty", request.identity, options, async () => {
+      const nativeName = await this.requireRunningNativeName(request.identity, options?.signal);
+      return startAgentPty({
+        nativeName,
+        argv: request.argv,
+        ...(options?.cwd !== undefined ? { cwd: options.cwd } : {}),
+        ...(options?.user !== undefined ? { user: options.user } : {}),
+        ...(options?.env !== undefined ? { env: options.env } : {}),
+        ...(options?.rows !== undefined ? { rows: options.rows } : {}),
+        ...(options?.cols !== undefined ? { cols: options.cols } : {}),
+        ...(options?.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+        ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+        ...(options?.input !== undefined ? { input: options.input } : {}),
+      });
+    });
+  }
+
+  async copyHostToGuest(request: HostCopyPaths, options?: HostCopyOptions): Promise<void> {
+    return this.withOperation("copyHostToGuest", request.identity, options, async () => {
+      const nativeName = await this.requireRunningNativeName(request.identity, options?.signal);
+      await copyHostToGuest(nativeName, request.hostPath, request.guestPath, options);
+    });
+  }
+
+  async copyGuestToHost(request: HostCopyPaths, options?: HostCopyOptions): Promise<void> {
+    return this.withOperation("copyGuestToHost", request.identity, options, async () => {
+      const nativeName = await this.requireRunningNativeName(request.identity, options?.signal);
+      await copyGuestToHost(nativeName, request.guestPath, request.hostPath, options);
+    });
+  }
+
   async [Symbol.asyncDispose](): Promise<void> {
     const names = [...this.liveByName.keys()];
     for (const name of names) {
@@ -393,6 +494,22 @@ class LocalHost implements Host {
   ): Promise<SandboxInspection> {
     const record = await this.requireOwned(identity, nativeName);
     return this.toInspection(identity, record);
+  }
+
+  private async requireRunningNativeName(
+    identity: SandboxIdentity,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    throwIfAborted(signal);
+    const normalized = assertSandboxIdentity(identity);
+    const nativeName = nativeSandboxName(normalized.project, normalized.instance);
+    const record = await this.requireOwned(normalized, nativeName);
+    if (record.status !== "running") {
+      throw SboxError.nativeState("Sandbox must be running for process or transfer operations.", {
+        details: { state: record.status, nativeName },
+      });
+    }
+    return nativeName;
   }
 
   private async requireOwned(

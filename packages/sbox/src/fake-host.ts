@@ -6,7 +6,13 @@
  */
 
 import { SboxError, throwIfAborted, wrapUnknownFailure } from "./errors.js";
-import type { Host } from "./host.js";
+import type {
+  Host,
+  HostCopyPaths,
+  HostExecArgvRequest,
+  HostExecShellRequest,
+  HostPtyRequest,
+} from "./host.js";
 import {
   assertSandboxIdentity,
   nativeSandboxName,
@@ -17,11 +23,29 @@ import { createRedactingLogger, safeLog, silentLogger, type Logger } from "./log
 import { inspectOwnershipLabels } from "./ownership.js";
 import { buildOwnershipLabels } from "./ownership-adoption.js";
 import { projectCreateRequest } from "./immutable-creation.js";
+import {
+  FakeSandboxFilesystem,
+  defaultFakeExec,
+  fakeCopyGuestToHost,
+  fakeCopyHostToGuest,
+  fakeExecCollected,
+  fakeExecStream,
+  fakePty,
+} from "./fake-process.js";
+import type {
+  HostCollectedExecOptions,
+  HostPtyOptions,
+  HostStreamingExecOptions,
+  ProcessSession,
+  PtySession,
+} from "./process/session.js";
+import type { HostCopyOptions } from "./transfer/types.js";
 import type {
   HostCapabilities,
   HostCreateRequest,
   HostListOptions,
   OperationOptions,
+  ProcessResult,
   SandboxCreationSettings,
   SandboxInspection,
   SandboxLifecycleState,
@@ -50,11 +74,14 @@ interface StoredSandbox {
 export class FakeHost implements Host {
   private readonly byKey = new Map<string, StoredSandbox>();
   private readonly byNativeName = new Map<string, string>();
+  private readonly filesystems = new Map<string, FakeSandboxFilesystem>();
   private readonly logger: Logger;
   private readonly now: () => Date;
   private disposed = false;
   /** Test helper: Host method names invoked through the public Host contract. */
   readonly operations: string[] = [];
+  /** Optional override for fake exec behavior. */
+  execHandler = defaultFakeExec;
 
   constructor(options: FakeHostOptions = {}) {
     this.logger = createRedactingLogger(options.logger ?? silentLogger);
@@ -193,12 +220,94 @@ export class FakeHost implements Host {
     this.operations.push("capabilities");
     return this.withOperation("capabilities", undefined, options, async () => ({
       localMicrosandbox: false,
-      notes: ["FakeHost models the Phase 1 Host contract in memory."],
+      notes: ["FakeHost models the Host contract in memory."],
     }));
+  }
+
+  async execArgv(
+    request: HostExecArgvRequest,
+    options?: HostCollectedExecOptions,
+  ): Promise<ProcessResult> {
+    this.operations.push("execArgv");
+    return this.withOperation("execArgv", request.identity, options, async () => {
+      this.requireRunning(request.identity);
+      return fakeExecCollected(request.argv, options ?? {}, { run: this.execHandler });
+    });
+  }
+
+  async execArgvStream(
+    request: HostExecArgvRequest,
+    options?: HostStreamingExecOptions,
+  ): Promise<ProcessSession> {
+    this.operations.push("execArgvStream");
+    return this.withOperation("execArgvStream", request.identity, options, async () => {
+      this.requireRunning(request.identity);
+      return fakeExecStream(request.argv, options ?? {}, { run: this.execHandler });
+    });
+  }
+
+  async execShell(
+    request: HostExecShellRequest,
+    options?: HostCollectedExecOptions,
+  ): Promise<ProcessResult> {
+    this.operations.push("execShell");
+    return this.withOperation("execShell", request.identity, options, async () => {
+      this.requireRunning(request.identity);
+      const shell = request.shell ?? "/bin/sh";
+      return fakeExecCollected([shell, "-c", request.script], options ?? {}, {
+        run: this.execHandler,
+      });
+    });
+  }
+
+  async execShellStream(
+    request: HostExecShellRequest,
+    options?: HostStreamingExecOptions,
+  ): Promise<ProcessSession> {
+    this.operations.push("execShellStream");
+    return this.withOperation("execShellStream", request.identity, options, async () => {
+      this.requireRunning(request.identity);
+      const shell = request.shell ?? "/bin/sh";
+      return fakeExecStream([shell, "-c", request.script], options ?? {}, {
+        run: this.execHandler,
+      });
+    });
+  }
+
+  async pty(request: HostPtyRequest, options?: HostPtyOptions): Promise<PtySession> {
+    this.operations.push("pty");
+    return this.withOperation("pty", request.identity, options, async () => {
+      this.requireRunning(request.identity);
+      return fakePty(request.argv, options ?? {});
+    });
+  }
+
+  async copyHostToGuest(request: HostCopyPaths, options?: HostCopyOptions): Promise<void> {
+    this.operations.push("copyHostToGuest");
+    return this.withOperation("copyHostToGuest", request.identity, options, async () => {
+      const stored = this.requireRunning(request.identity);
+      const fs = this.fsFor(stored.nativeName);
+      await fakeCopyHostToGuest(fs, request.hostPath, request.guestPath, options);
+    });
+  }
+
+  async copyGuestToHost(request: HostCopyPaths, options?: HostCopyOptions): Promise<void> {
+    this.operations.push("copyGuestToHost");
+    return this.withOperation("copyGuestToHost", request.identity, options, async () => {
+      const stored = this.requireRunning(request.identity);
+      const fs = this.fsFor(stored.nativeName);
+      await fakeCopyGuestToHost(fs, request.guestPath, request.hostPath, options);
+    });
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
     this.disposed = true;
+  }
+
+  /** Test helper: access the in-memory guest filesystem for a sandbox. */
+  filesystemFor(identity: SandboxIdentity): FakeSandboxFilesystem {
+    const stored = this.require(identity);
+    return this.fsFor(stored.nativeName);
   }
 
   /** Test helper: seed or replace stored state without going through create. */
@@ -300,6 +409,25 @@ export class FakeHost implements Host {
       );
     }
     return stored;
+  }
+
+  private requireRunning(identity: SandboxIdentity): StoredSandbox {
+    const stored = this.require(identity);
+    if (stored.state !== "running") {
+      throw SboxError.nativeState("Sandbox must be running for process or transfer operations.", {
+        details: { state: stored.state, nativeName: stored.nativeName },
+      });
+    }
+    return stored;
+  }
+
+  private fsFor(nativeName: string): FakeSandboxFilesystem {
+    let fs = this.filesystems.get(nativeName);
+    if (fs === undefined) {
+      fs = new FakeSandboxFilesystem();
+      this.filesystems.set(nativeName, fs);
+    }
+    return fs;
   }
 
   private toInspection(stored: StoredSandbox): SandboxInspection {

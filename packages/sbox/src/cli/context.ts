@@ -7,8 +7,8 @@ import type { Logger } from "../logging.js";
 import type { CliOutputFormat } from "./format.js";
 
 export interface CliIo {
-  readonly stdout: { write(chunk: string): void };
-  readonly stderr: { write(chunk: string): void };
+  readonly stdout: { write(chunk: string | Uint8Array): void };
+  readonly stderr: { write(chunk: string | Uint8Array): void };
   readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly homeDir?: string;

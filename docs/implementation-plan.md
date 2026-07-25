@@ -181,6 +181,38 @@ Tests and evidence:
 Exit condition: the local API is independently useful and contains every
 process/transfer primitive later required by remote transport and Sandcastle.
 
+### Phase 3 implementation notes
+
+- Host gained `execArgv` / `execArgvStream` / `execShell` / `execShellStream` /
+  `pty` / `copyHostToGuest` / `copyGuestToHost`. Public handle methods delegate
+  through Host; native handles stay private and are freshly connected per op.
+- Exact argv uses Microsandbox `execStreamWith` + `ExecOptionsBuilder`
+  (`cwd` / `user` / `env` / `timeout` / `stdinPipe`). Guest shell is always
+  explicit argv `[shell, "-c", script]` (default `/bin/sh`).
+- Collection bounds default to 10 MiB per stream via `DEFAULT_OUTPUT_LIMIT_BYTES`.
+- Interactive PTY uses a private agent-protocol adapter over `AgentClient`
+  (`core.exec.request` with `tty: true`, empty stdin = EOF, resize via
+  `core.exec.resize`). Documented in `patches/README.md` with upstream
+  replacement condition. Protocol generation for 0.6.6 is `v: 6`.
+- Transfer walks host/guest trees over `copyFromHost` / `copyToHost` /
+  `read` / `write` / `list` / `stat`, plus private agent FS helpers for
+  `Symlink` / `ReadLink` / `SetStat` (not exposed on the Node `SandboxFsOps`
+  wrapper). Trees are prevalidated, staged beside the destination on the same
+  filesystem, and published by rename/swap; `overwrite: "replace"` replaces
+  rather than merges. Archive validation helpers remain internal in
+  `transfer/archive.ts` for future remote packages.
+- Streaming sessions use a bounded pull-driven event/output queue (default
+  capacity 64). Callers must consume events or cancel; `wait()` does not drain.
+  Caller stdin/input iterators are owned and closed on settlement so cleanup
+  never hangs on a pending `next()`.
+- PTY honors `timeoutMs` with a distinct `timeout` error (separate from
+  `cancel`).
+- CLI: `sbox exec [profile] -- <argv...>` and `sbox shell [profile] -- <script>`
+  with `--stream`, `--cwd`, `--user`, guest exit-code propagation, and NDJSON.
+- Real process/PTY/transfer acceptance:
+  `packages/sbox/test/process.acceptance.test.ts` under `pnpm test:acceptance`
+  with an isolated short disposable `MSB_HOME`.
+
 ## Phase 4: Content-addressed automatic images
 
 Add the core Docker-Compose-like convenience without an image database or

@@ -79,8 +79,47 @@ export {
   type Logger,
 } from "./logging.js";
 
-export type { Host } from "./host.js";
+export type {
+  Host,
+  HostExecArgvRequest,
+  HostExecShellRequest,
+  HostPtyRequest,
+  HostCopyPaths,
+} from "./host.js";
 export { disposeHost } from "./host.js";
+
+export {
+  DEFAULT_OUTPUT_LIMIT_BYTES,
+  resolveOutputLimits,
+  assertTimeoutMs,
+  assertPtyDimension,
+  type OutputLimits,
+} from "./process/limits.js";
+
+export {
+  bytesToUtf8,
+  utf8ToBytes,
+  concatBytes,
+  IncrementalUtf8Decoder,
+  LineDecoder,
+  collectUtf8,
+  collectLines,
+} from "./process/decode.js";
+
+export { collectProcessEvents, type CollectProcessOptions } from "./process/collect.js";
+
+export type {
+  ProcessStdin,
+  ProcessSession,
+  PtySize,
+  PtySession,
+  HostExecBaseOptions,
+  HostCollectedExecOptions,
+  HostStreamingExecOptions,
+  HostPtyOptions,
+} from "./process/session.js";
+
+export type { TransferOverwrite, HostCopyOptions, HostCopyRequest } from "./transfer/types.js";
 
 export { createLocalHost, type LocalHostOptions } from "./local-host.js";
 

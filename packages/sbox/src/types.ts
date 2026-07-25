@@ -1,8 +1,8 @@
 /**
  * Application-owned public DTOs for lifecycle, capabilities, and processes.
  *
- * These types establish package boundaries. Process execution is not implemented
- * in Phase 1; the result/event shapes are exported for a stable public contract.
+ * Process results and events are transport-safe, serializable where applicable,
+ * independent of Microsandbox classes, and free of native handles.
  */
 
 import type {
@@ -87,7 +87,11 @@ export interface SandboxSummary {
   readonly image: string;
 }
 
-/** Collected process result boundary (execution arrives in a later phase). */
+/**
+ * Collected process result. Non-zero guest exit remains a result (not an error).
+ * `timedOut` / `cancelled` stay false for normal completion; those conditions
+ * throw distinct `SboxError` codes instead of mutating this shape mid-flight.
+ */
 export interface ProcessResult {
   readonly exitCode: number;
   readonly signal: string | null;
@@ -97,6 +101,7 @@ export interface ProcessResult {
   readonly cancelled: boolean;
 }
 
+/** Byte-oriented public streaming events for local and remote Hosts. */
 export type ProcessEvent =
   | { readonly type: "started"; readonly pid?: number }
   | { readonly type: "stdout"; readonly data: Uint8Array }

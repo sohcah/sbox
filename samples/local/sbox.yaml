@@ -1,0 +1,24 @@
+version: 1
+project: sample-local
+defaultProfile: default
+
+volumes:
+  cache:
+    size: 64MiB
+
+profiles:
+  default:
+    image: alpine:3.20
+    cpus: 1
+    memory: 512MiB
+    workdir: /workspace
+    user: root
+    shell: /bin/sh
+    volumes:
+      - volume: cache
+        path: /cache
+    network:
+      mode: default-deny
+      allow:
+        - domain: example.com
+          ports: [443]

@@ -618,6 +618,28 @@ Exit condition: publishable `0.1.0` implements the entire product/system plan,
 all exclusions remain true, and the architecture is still accurately described
 as a small configured layer over Microsandbox.
 
+### Phase 9 implementation notes
+
+- Final docs: `docs/api.md`, `cli.md`, `configuration.md`, `sandcastle.md`,
+  `remote.md`, `networking.md`, `volumes.md`, `prerequisites.md`,
+  `troubleshooting.md`, `feature-inventory.md`, `certification.md`; root and
+  package READMEs updated for `0.1.0`.
+- Samples: `samples/local` (default-deny + optional volume) and
+  `samples/remote` (project `target:` + user-config target definitions);
+  covered by `samples-config.test.ts`.
+- Packages: MIT license, repository/homepage metadata, `pnpm publish:dry-run`
+  (`scripts/publish-dry-run.sh` → `pnpm pack`, manifest rewrite assert,
+  clean-consumer install of both tarballs). Sandcastle depends on
+  `@sohcah/sbox` via `workspace:^` (packs to `^0.1.0`).
+- `doctor`: required Node major (`MIN_NODE_MAJOR` / injectable version),
+  protocol/target/handshake (+ remote URL/auth); informational Docker,
+  qemu-img, formatter-image, Microsandbox availability so CI/remote-client
+  hosts without local tools still pass when Node is supported.
+- Evidence: `doctor.test.ts`, `repository-audit.test.ts`,
+  `secret-canary.test.ts`, `remote-nonloopback.acceptance.test.ts`, existing
+  declaration-leak and domain canaries.
+- No new product capabilities; non-goals remain enforced by audit.
+
 ## Explicitly later, not incomplete work
 
 The following require new product decisions rather than being inferred from

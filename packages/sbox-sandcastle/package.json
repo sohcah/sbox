@@ -2,10 +2,28 @@
   "name": "@sohcah/sbox-sandcastle",
   "version": "0.1.0",
   "description": "Sandcastle adapter for @sohcah/sbox",
-  "license": "UNLICENSED",
+  "keywords": [
+    "microsandbox",
+    "sandbox",
+    "sandcastle",
+    "sbox"
+  ],
+  "homepage": "https://github.com/sohcah/sbox/tree/main/packages/sbox-sandcastle#readme",
+  "bugs": {
+    "url": "https://github.com/sohcah/sbox/issues"
+  },
+  "license": "MIT",
+  "author": "sohcah",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sohcah/sbox.git",
+    "directory": "packages/sbox-sandcastle"
+  },
   "files": [
     "dist",
-    "README.md"
+    "!dist/**/*.tsbuildinfo",
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {
@@ -23,7 +41,7 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "@sohcah/sbox": "workspace:*"
+    "@sohcah/sbox": "workspace:^"
   },
   "devDependencies": {
     "@ai-hero/sandcastle": "0.12.0"

@@ -57,7 +57,7 @@ importers:
   packages/sbox-sandcastle:
     dependencies:
       '@sohcah/sbox':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../sbox
     devDependencies:
       '@ai-hero/sandcastle':

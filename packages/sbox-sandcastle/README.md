@@ -1,6 +1,6 @@
 # @sohcah/sbox-sandcastle
 
-Sandcastle isolated-sandbox provider adapter over `@sohcah/sbox`.
+Sandcastle isolated-sandbox provider adapter over `@sohcah/sbox`. License: MIT.
 
 ## Install
 

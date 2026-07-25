@@ -12,6 +12,7 @@
     "build": "tsc -b --pretty false",
     "test": "vitest run --project unit",
     "test:acceptance": "vitest run --project acceptance --reporter=default",
+    "publish:dry-run": "bash scripts/publish-dry-run.sh",
     "clean": "rm -rf packages/*/dist packages/*/tsconfig.tsbuildinfo tsconfig.tsbuildinfo"
   },
   "devDependencies": {

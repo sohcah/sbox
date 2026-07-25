@@ -16,7 +16,11 @@ does not maintain a second sandbox database or orchestration state machine.
 
 ## Status
 
-Phase 8 is implemented: `@sohcah/sbox-sandcastle` adapts an existing
+Phase 9 is complete: documentation, samples, package metadata/licenses,
+publish dry-run, expanded read-only `doctor`, feature inventory, repository
+audit, secret-canary consolidation, and `0.1.0` certification checklist.
+
+Phase 8 remains in place: `@sohcah/sbox-sandcastle` adapts an existing
 `SboxClient` to Sandcastle's isolated provider contract (peer
 `@ai-hero/sandcastle`), and the CLI `run` command creates a unique sandbox,
 executes once, and removes in `finally`.
@@ -58,7 +62,7 @@ pnpm test:acceptance       # optional real Microsandbox (needs runtime)
                            # unavailable is reported as a skipped Vitest test, not a pass
 ```
 
-## Quick start (Phase 8)
+## Quick start (0.1.0)
 
 ```bash
 sbox init --project demo
@@ -153,6 +157,21 @@ Design docs:
 - [`docs/non-goals.md`](docs/non-goals.md)
 - [`docs/implementation-plan.md`](docs/implementation-plan.md)
 - [`docs/prior-art.md`](docs/prior-art.md)
+- [`docs/api.md`](docs/api.md)
+- [`docs/cli.md`](docs/cli.md)
+- [`docs/configuration.md`](docs/configuration.md)
+- [`docs/sandcastle.md`](docs/sandcastle.md)
+- [`docs/remote.md`](docs/remote.md)
+- [`docs/networking.md`](docs/networking.md)
+- [`docs/volumes.md`](docs/volumes.md)
+- [`docs/prerequisites.md`](docs/prerequisites.md)
+- [`docs/troubleshooting.md`](docs/troubleshooting.md)
+- [`docs/feature-inventory.md`](docs/feature-inventory.md)
+- [`docs/certification.md`](docs/certification.md)
+
+Samples: [`samples/local`](samples/local), [`samples/remote`](samples/remote).
+
+Publish dry run: `pnpm publish:dry-run`.
 
 The Microsandbox TypeScript 7 declaration patch and the private PTY agent
 adapter are documented under [`patches/README.md`](patches/README.md).

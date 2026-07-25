@@ -1,0 +1,18 @@
+version: 1
+project: sample-remote
+defaultProfile: default
+target: lab
+
+profiles:
+  default:
+    image: alpine:3.20
+    cpus: 1
+    memory: 512MiB
+    workdir: /workspace
+    user: root
+    shell: /bin/sh
+    network:
+      mode: default-deny
+      allow:
+        - domain: example.com
+          ports: [443]

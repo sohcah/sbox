@@ -2,13 +2,34 @@
   "name": "@sohcah/sbox",
   "version": "0.1.0",
   "description": "Small TypeScript library and CLI over Microsandbox",
-  "license": "UNLICENSED",
+  "keywords": [
+    "cli",
+    "docker",
+    "microsandbox",
+    "qemu",
+    "sandbox"
+  ],
+  "homepage": "https://github.com/sohcah/sbox#readme",
+  "bugs": {
+    "url": "https://github.com/sohcah/sbox/issues"
+  },
+  "license": "MIT",
+  "author": "sohcah",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sohcah/sbox.git",
+    "directory": "packages/sbox"
+  },
   "bin": {
     "sbox": "./dist/cli.js"
   },
   "files": [
     "dist",
-    "README.md"
+    "!dist/**/*.tsbuildinfo",
+    "!dist/fake-host.*",
+    "!dist/fake-process.*",
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {

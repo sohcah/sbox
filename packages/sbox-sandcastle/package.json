@@ -25,6 +25,12 @@
   "dependencies": {
     "@sohcah/sbox": "workspace:*"
   },
+  "devDependencies": {
+    "@ai-hero/sandcastle": "0.12.0"
+  },
+  "peerDependencies": {
+    "@ai-hero/sandcastle": "^0.12.0"
+  },
   "engines": {
     "node": ">=24"
   }

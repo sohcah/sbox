@@ -64,8 +64,14 @@ describe("@sohcah/sbox-sandcastle declaration leak guard", () => {
       await writeFile(
         join(consumerDir, "consumer.ts"),
         `
-import { PACKAGE_NAME, PACKAGE_VERSION, SBOX_PACKAGE_NAME } from "@sohcah/sbox-sandcastle";
+import {
+  PACKAGE_NAME,
+  PACKAGE_VERSION,
+  SBOX_PACKAGE_NAME,
+  createSboxSandcastleProvider,
+} from "@sohcah/sbox-sandcastle";
 export const names = [PACKAGE_NAME, PACKAGE_VERSION, SBOX_PACKAGE_NAME] as const;
+export type ProviderFactory = typeof createSboxSandcastleProvider;
 `,
         "utf8",
       );

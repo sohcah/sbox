@@ -8,6 +8,7 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["test/**/*.ts"],
-  "references": [{ "path": "./tsconfig.json" }]
+  "include": ["test/**/*.ts", "src/**/*.ts"],
+  "exclude": ["test/**/*.acceptance.test.ts"],
+  "references": [{ "path": "./tsconfig.json" }, { "path": "../sbox" }]
 }

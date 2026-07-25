@@ -508,6 +508,7 @@ client and handle behavior remains the same.
   HTTP/WS — auth, lifecycle, streaming exec/PTY, kill→transport, graceful
   shutdown). Real LocalHost-behind-serve evidence:
   `packages/sbox/test/remote.acceptance.test.ts` under `pnpm test:acceptance`.
+
 ## Phase 8: Sandcastle adapter and complete CLI workflows
 
 Implement the bounded integration only after the general API proves all of its
@@ -547,6 +548,33 @@ Tests and evidence:
 
 Exit condition: Sandcastle consumes only the stable `sbox` API and its complete
 isolated provider works locally and remotely.
+
+### Phase 8 implementation notes
+
+- `@sohcah/sbox-sandcastle` exports `createSboxSandcastleProvider` (peer
+  `@ai-hero/sandcastle@^0.12.0`). Each `create` allocates a unique `sc-<hex>`
+  instance via `SboxClient.create`; default `worktreePath` is `/workspace`.
+  `close` cancels tracked children then exact `remove`, treating `not_found` as
+  success. Removal completion is marked only after success/`not_found`;
+  transient remove failures clear the in-flight promise so a later `close()`
+  retries.
+- Required `exec` uses profile shell + `shell`/`shellStream`. Live `onLine`
+  callbacks are derived incrementally from **both** stdout and stderr via
+  `LineDecoder` (including final unterminated fragments). `sudo` maps to guest
+  user `root`; default cwd is `worktreePath`; string `stdin` is supported.
+- Optional `interactiveExec`: PTY when `stdin.isTTY` (resize from stdout
+  `rows`/`columns`, merged output to Sandcastle stdout); otherwise
+  `execStream` with separate stdout/stderr. `copyIn` → recursive
+  `copyToGuest`; `copyFileOut` → single-file `copyFromGuest` (rejects non-files).
+- CLI `run [profile] -- <argv...>` creates a unique `run-<hex>` instance,
+  executes, removes in `finally`, returns the guest exit code, rejects
+  `--instance`, and preserves primary failures (including streamed operational
+  errors) with `cleanupFailed` when remove also fails. `doctor` remains
+  read-only; acceptance stays explicit via `pnpm test:acceptance`.
+- Evidence: `sandcastle-contract.test.ts`, `sandcastle-handle.test.ts`
+  (interactive cancellation, retryable close), `cli-run.test.ts` (abort,
+  standalone operation failure, standalone cleanup failure, combined and
+  streamed primary+cleanup), `sandcastle.acceptance.test.ts` (local + remote).
 
 ## Phase 9: Hardening, documentation, and `0.1.0` certification
 

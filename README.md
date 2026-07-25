@@ -16,7 +16,16 @@ does not maintain a second sandbox database or orchestration state machine.
 
 ## Status
 
-Phase 6 is implemented for managed QCOW2/ext4 volumes: project volume
+Phase 8 is implemented: `@sohcah/sbox-sandcastle` adapts an existing
+`SboxClient` to Sandcastle's isolated provider contract (peer
+`@ai-hero/sandcastle`), and the CLI `run` command creates a unique sandbox,
+executes once, and removes in `finally`.
+
+Phase 7 remains in place for remote Host transport: authenticated foreground
+`sbox serve`, `createRemoteHost`, HTTP/WebSocket process and transfer parity,
+and remote-aware `doctor`.
+
+Phase 6 remains in place for managed QCOW2/ext4 volumes: project volume
 declarations, profile attachments, host-local bases under
 `~/.sbox/volumes` (override with `SBOX_VOLUME_DATA_ROOT`), disposable child
 overlays on ordinary create, exclusive `volume shell` maintenance mounting the
@@ -39,8 +48,6 @@ Phase 4 remains in place for Dockerfile-backed profiles: content-addressed
 identity, Docker build → ownership stamp → export → `msb image load`,
 in-process coalescing, and CLI `build` / `image list` / `image remove`.
 
-Later phases add remote transport and the Sandcastle adapter.
-
 ## Development
 
 ```bash
@@ -51,7 +58,7 @@ pnpm test:acceptance       # optional real Microsandbox (needs runtime)
                            # unavailable is reported as a skipped Vitest test, not a pass
 ```
 
-## Quick start (Phase 6)
+## Quick start (Phase 8)
 
 ```bash
 sbox init --project demo
@@ -71,6 +78,7 @@ sbox init --project demo
 #         - domain: example.com
 sbox config validate
 sbox up default
+sbox run default -- printf '%s' hello   # unique sandbox; removed in finally
 sbox volume list
 sbox volume shell default cache   # exclusive base maintenance
 sbox stop default && sbox remove default
@@ -134,9 +142,9 @@ sandbox.
 | 5    | Already exists                       |
 | 130  | Cancellation                         |
 
-For `exec` and `shell`, the guest process exit code becomes the CLI exit code
-on success of the Host operation. `--json` emits a single result object for
-collected commands; `--stream --json` emits typed NDJSON events.
+For `exec`, `shell`, and `run`, the guest process exit code becomes the CLI
+exit code on success of the Host operation. `--json` emits a single result
+object for collected commands; `--stream --json` emits typed NDJSON events.
 
 Design docs:
 

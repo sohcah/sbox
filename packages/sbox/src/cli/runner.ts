@@ -12,6 +12,7 @@ import { runExec, runShell } from "./commands/exec-shell.js";
 import { runBuild, runImageList, runImageRemove } from "./commands/image.js";
 import { runInit } from "./commands/init.js";
 import { runInspect, runList, runRemove, runStop, runUp } from "./commands/lifecycle.js";
+import { runRun } from "./commands/run.js";
 import { runServe } from "./commands/serve.js";
 import { runVolumeList, runVolumeRemove, runVolumeShell } from "./commands/volume.js";
 import type { CliContext, CliGlobalFlags, CliIo } from "./context.js";
@@ -36,6 +37,7 @@ Usage:
   sbox serve [--bind <addr>] [--port <n>] [--token-env <name>] [--allow-non-loopback]
   sbox build [profile] [--force]
   sbox up [profile]
+  sbox run [profile] [--cwd <path>] [--user <name>] [--stream] -- <argv...>
   sbox list
   sbox inspect <profile>
   sbox stop <profile>
@@ -57,7 +59,7 @@ Global flags:
   -h, --help             Show help
 
 Exit codes:
-  0 success / guest exit code for exec and shell
+  0 success / guest exit code for exec, shell, and run
   1 operational failure
   2 validation / configuration error
   3 ownership conflict or creation drift
@@ -248,6 +250,20 @@ export async function runCli(options: RunCliOptions): Promise<number> {
           });
         }
         return await runRemove(ctx, profile);
+      }
+      case "run": {
+        if (afterSep.length === 0) {
+          throw SboxError.validation("run requires `-- <argv...>`.", {
+            details: { path: "argv" },
+          });
+        }
+        return await runRun(ctx, {
+          ...(rest[0] !== undefined ? { profile: rest[0] } : {}),
+          argv: afterSep,
+          ...(typeof values["cwd"] === "string" ? { cwd: values["cwd"] } : {}),
+          ...(typeof values["user"] === "string" ? { user: values["user"] } : {}),
+          stream: values["stream"] === true,
+        });
       }
       case "exec": {
         if (afterSep.length === 0) {

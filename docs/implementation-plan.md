@@ -328,6 +328,17 @@ Tests and evidence:
 Exit condition: an unconfigured sandbox has no external network access, while
 profiles can grant only the agreed destinations and ports.
 
+**Status (implemented):** Curated profile `network` / `secrets`, Host create
+wiring through Microsandbox `NetworkBuilder`, FakeHost dynamic ports for unit
+tests, LocalHost `dynamicHostPorts: false` on Microsandbox 0.6.6 (host `0` is
+not inspectable), safe inspection DTOs, unit coverage (validation, compile,
+decode round-trip / fingerprint parity, independence, canaries), compatibility
+fixtures including a real network-configured sandbox config, and
+`network.acceptance.test.ts` for deny/allow/explicit publish against a real
+runtime. Decode fails closed when enabled networking lacks deny/deny policy
+defaults. Ownership fingerprints expand allow rules per protocol so create →
+inspect → `up` drift stays stable.
+
 ## Phase 6: Managed base QCOW2 volumes
 
 Implement the one-base/direct-child model and its narrowly justified safety

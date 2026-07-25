@@ -4,6 +4,7 @@ import { createLocalHostInternal } from "../src/local-host-internal.js";
 import { assertSandboxIdentity, nativeSandboxName, type SandboxIdentity } from "../src/identity.js";
 import { disposeHost } from "../src/host.js";
 import { buildOwnershipLabels } from "../src/ownership-adoption.js";
+import { defaultNetworkConfig } from "../src/network/types.js";
 import { MemoryNativeRuntime } from "./helpers/memory-native-runtime.js";
 import { describe, expect, it } from "vitest";
 
@@ -66,6 +67,8 @@ describe.each(hostFactories())("Host lifecycle contract ($name)", ({ create }) =
         maxDurationSecs: null,
         idleTimeoutSecs: null,
         env: {},
+        network: defaultNetworkConfig(),
+        secrets: [],
       }),
     );
 
@@ -181,6 +184,8 @@ describe.each(hostFactories())("Host stop preconditions ($name)", ({ create }) =
         maxDurationSecs: null,
         idleTimeoutSecs: null,
         env: {},
+        network: defaultNetworkConfig(),
+        secrets: [],
       }),
       image: "alpine:3.20",
       cpus: 1,
@@ -192,6 +197,8 @@ describe.each(hostFactories())("Host stop preconditions ($name)", ({ create }) =
       maxDurationSecs: null as number | null,
       idleTimeoutSecs: null as number | null,
       env: {},
+      network: defaultNetworkConfig(),
+      secrets: [],
     };
 
     runtime.seed({ ...baseRecord, status: "running" });

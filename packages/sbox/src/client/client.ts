@@ -36,6 +36,8 @@ import {
   resolveEnsureImageRequest,
   resolveImageIdentityInputs,
 } from "./resolve-intent.js";
+import type { RawNetworkAllowRule } from "../network/normalize.js";
+import type { NetworkAllowRule, PublishedPortSpec, RuntimeSecretConfig } from "../network/types.js";
 
 export interface SboxClientOptions {
   readonly project: ProjectConfig;
@@ -59,6 +61,9 @@ export interface ProfileOperationOptions extends ClientOperationOptions {
   readonly instance?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly invocation?: Readonly<Record<string, string>>;
+  readonly networkAllow?: readonly NetworkAllowRule[] | readonly RawNetworkAllowRule[];
+  readonly networkPublish?: readonly PublishedPortSpec[];
+  readonly secrets?: readonly RuntimeSecretConfig[];
 }
 
 export interface ClientBuildOptions extends ProfileOperationOptions {
@@ -373,6 +378,9 @@ class HostSboxClient implements SboxClient {
       ...(options.profile !== undefined ? { profile: options.profile } : {}),
       ...(options.instance !== undefined ? { instance: options.instance } : {}),
       ...(options.env !== undefined ? { env: options.env } : {}),
+      ...(options.networkAllow !== undefined ? { networkAllow: options.networkAllow } : {}),
+      ...(options.networkPublish !== undefined ? { networkPublish: options.networkPublish } : {}),
+      ...(options.secrets !== undefined ? { secrets: options.secrets } : {}),
       ...(resolvedImage !== undefined ? { resolvedImage } : {}),
       external: this.externalContext(options),
     });
@@ -403,6 +411,9 @@ class HostSboxClient implements SboxClient {
       ...(options.profile !== undefined ? { profile: options.profile } : {}),
       ...(options.instance !== undefined ? { instance: options.instance } : {}),
       ...(options.env !== undefined ? { env: options.env } : {}),
+      ...(options.networkAllow !== undefined ? { networkAllow: options.networkAllow } : {}),
+      ...(options.networkPublish !== undefined ? { networkPublish: options.networkPublish } : {}),
+      ...(options.secrets !== undefined ? { secrets: options.secrets } : {}),
       ...(resolvedImage !== undefined ? { resolvedImage } : {}),
       external: this.externalContext(options),
     });

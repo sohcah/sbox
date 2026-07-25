@@ -11,6 +11,7 @@ import {
   matchOwnershipLabels,
 } from "../src/ownership-adoption.js";
 import { projectCreateRequest } from "../src/immutable-creation.js";
+import { defaultNetworkConfig } from "../src/network/types.js";
 
 describe("ownership labels", () => {
   const identity = assertSandboxIdentity({
@@ -76,6 +77,8 @@ describe("ownership labels", () => {
           maxDurationSecs: null,
           idleTimeoutSecs: null,
           env: {},
+          network: defaultNetworkConfig(),
+          secrets: [],
         },
         identity,
         creation,
@@ -95,6 +98,8 @@ describe("ownership labels", () => {
           maxDurationSecs: null,
           idleTimeoutSecs: null,
           env: {},
+          network: defaultNetworkConfig(),
+          secrets: [],
         },
         identity,
         creation,

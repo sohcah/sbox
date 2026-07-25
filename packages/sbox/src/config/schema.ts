@@ -81,6 +81,106 @@ export const imageBuildConfigSchema = z.strictObject({
   includeGit: z.boolean().optional(),
 });
 
+const networkPortSpecSchema = z.union([
+  z.number().int().min(1).max(65535),
+  z.strictObject({
+    start: z.number().int().min(1).max(65535),
+    end: z.number().int().min(1).max(65535),
+  }),
+]);
+
+const networkProtocolSchema = z.enum(["tcp", "udp"]);
+
+const networkAllowRuleRawSchema = z
+  .strictObject({
+    domain: z.string().min(1).optional(),
+    suffix: z.string().min(1).optional(),
+    ip: z.string().min(1).optional(),
+    cidr: z.string().min(1).optional(),
+    ports: z.array(networkPortSpecSchema).min(1).optional(),
+    protocols: z.array(networkProtocolSchema).min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const kinds = [value.domain, value.suffix, value.ip, value.cidr].filter(
+      (item) => item !== undefined,
+    );
+    if (kinds.length !== 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Specify exactly one of domain, suffix, ip, or cidr.",
+      });
+    }
+  });
+
+const networkAllowRuleTypedSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("domain"),
+    domain: z.string().min(1),
+    ports: z.array(networkPortSpecSchema).min(1).optional(),
+    protocols: z.array(networkProtocolSchema).min(1).optional(),
+  }),
+  z.strictObject({
+    kind: z.literal("suffix"),
+    suffix: z.string().min(1),
+    ports: z.array(networkPortSpecSchema).min(1).optional(),
+    protocols: z.array(networkProtocolSchema).min(1).optional(),
+  }),
+  z.strictObject({
+    kind: z.literal("ip"),
+    ip: z.string().min(1),
+    ports: z.array(networkPortSpecSchema).min(1).optional(),
+    protocols: z.array(networkProtocolSchema).min(1).optional(),
+  }),
+  z.strictObject({
+    kind: z.literal("cidr"),
+    cidr: z.string().min(1),
+    ports: z.array(networkPortSpecSchema).min(1).optional(),
+    protocols: z.array(networkProtocolSchema).min(1).optional(),
+  }),
+]);
+
+const networkAllowRuleSchema = z.union([networkAllowRuleTypedSchema, networkAllowRuleRawSchema]);
+
+const networkPublishSchema = z.strictObject({
+  guest: z.number().int().min(1).max(65535),
+  host: z.number().int().min(0).max(65535).optional(),
+  protocol: networkProtocolSchema.optional(),
+  bind: z.string().min(1).optional(),
+});
+
+export const networkConfigSchema = z
+  .strictObject({
+    mode: z.enum(["disabled", "default-deny"]).optional(),
+    allow: z.array(networkAllowRuleSchema).optional(),
+    publish: z.array(networkPublishSchema).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const mode = value.mode ?? "default-deny";
+    if (mode === "disabled") {
+      if ((value.allow?.length ?? 0) > 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["allow"],
+          message: "Network allow rules are not permitted when mode is disabled.",
+        });
+      }
+      if ((value.publish?.length ?? 0) > 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["publish"],
+          message: "Published ports are not permitted when mode is disabled.",
+        });
+      }
+    }
+  });
+
+export const runtimeSecretConfigSchema = z.strictObject({
+  env: envVarNameSchema,
+  value: externalValueRefSchema,
+  placeholder: z.string().min(1).optional(),
+  destinations: z.array(z.string().min(1)).min(1),
+});
+
 const profileCommonFields = {
   cpus: z.number().int().positive().optional(),
   memoryMiB: z.number().int().positive().optional(),
@@ -91,6 +191,8 @@ const profileCommonFields = {
   environment: z.record(envVarNameSchema, configValueSchema).optional(),
   maxDurationSecs: z.number().int().positive().nullable().optional(),
   idleTimeoutSecs: z.number().int().positive().nullable().optional(),
+  network: networkConfigSchema.optional(),
+  secrets: z.array(runtimeSecretConfigSchema).optional(),
 } as const;
 
 function refineImageOrBuild(
@@ -213,6 +315,8 @@ export const yamlProfileInputSchema = z
     idleTimeoutSecs: z.number().int().positive().nullable().optional(),
     maxDuration: durationSchema.nullable().optional(),
     idleTimeout: durationSchema.nullable().optional(),
+    network: networkConfigSchema.optional(),
+    secrets: z.array(runtimeSecretConfigSchema).optional(),
   })
   .superRefine((value, ctx) => {
     refineImageOrBuild(value, ctx);

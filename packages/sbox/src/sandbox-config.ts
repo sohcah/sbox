@@ -8,6 +8,7 @@
  * - lifecycle.maxDurationSecs / idleTimeoutSecs (nullable)
  * - env: [{ key, value }]
  * - labels: Record<string, string>
+ * - network: enabled/policy/ports/secrets (Phase 5)
  *
  * Do not invent alternate shapes unless documented for this pin.
  * Not part of the public package declaration graph.
@@ -18,6 +19,8 @@ import {
   PHASE1_DEFAULT_MEMORY_MIB,
   type SandboxImmutableCreation,
 } from "./immutable-creation.js";
+import { decodeNetworkEvidence, hostNetworkFromEvidence } from "./network/decode.js";
+import type { HostNetworkConfig, SafeRuntimeSecret } from "./network/types.js";
 
 export interface DecodedSandboxConfig {
   readonly image: string;
@@ -31,6 +34,8 @@ export interface DecodedSandboxConfig {
   readonly idleTimeoutSecs: number | null;
   readonly env: Readonly<Record<string, string>>;
   readonly labels: Readonly<Record<string, string>>;
+  readonly network: HostNetworkConfig;
+  readonly secrets: readonly SafeRuntimeSecret[];
 }
 
 export function decodeSandboxConfig(config: unknown): DecodedSandboxConfig {
@@ -41,6 +46,7 @@ export function decodeSandboxConfig(config: unknown): DecodedSandboxConfig {
   const resources = asRecord(root["resources"]);
   const runtime = asRecord(root["runtime"]);
   const lifecycle = asRecord(root["lifecycle"]);
+  const networkEvidence = decodeNetworkEvidence(config);
 
   return {
     image: readOciImageReference(root["image"]),
@@ -64,6 +70,8 @@ export function decodeSandboxConfig(config: unknown): DecodedSandboxConfig {
     ),
     env: readEnvEntries(root["env"]),
     labels: readLabels(root["labels"]),
+    network: hostNetworkFromEvidence(networkEvidence),
+    secrets: networkEvidence.secrets,
   };
 }
 
@@ -79,7 +87,36 @@ export function projectDecodedConfig(decoded: DecodedSandboxConfig): SandboxImmu
     env: Object.freeze({ ...decoded.env }),
     maxDurationSecs: decoded.maxDurationSecs,
     idleTimeoutSecs: decoded.idleTimeoutSecs,
+    network: decoded.network,
+    secrets: decoded.secrets,
   });
+}
+
+/**
+ * Best-effort label peek independent of network/image decode.
+ * Returns undefined when labels are absent or not a string map.
+ */
+export function peekSandboxConfigLabels(
+  config: unknown,
+): Readonly<Record<string, string>> | undefined {
+  if (config === null || typeof config !== "object" || Array.isArray(config)) {
+    return undefined;
+  }
+  const raw = (config as Record<string, unknown>)["labels"];
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value !== "string") {
+      return undefined;
+    }
+    out[key] = value;
+  }
+  return Object.freeze(out);
 }
 
 function readOciImageReference(image: unknown): string {

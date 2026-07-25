@@ -16,19 +16,20 @@ does not maintain a second sandbox database or orchestration state machine.
 
 ## Status
 
-Phase 4 is implemented for Dockerfile-backed profiles: content-addressed identity,
-Docker build → ownership stamp → export → `msb image load`, in-process coalescing,
-CLI `build` / `image list` / `image remove`, and automatic `up` ensure/reuse. There
-is no image database, registry, or cross-process build lock.
+Phase 5 is implemented for curated networking and runtime secrets: profile
+`network.mode` (`disabled` | `default-deny`), outbound allow rules (domain /
+suffix / IP / CIDR with TCP/UDP ports), published ports (loopback bind by
+default; dynamic host ports are capability-gated and currently off on
+Microsandbox 0.6.6 because allocated ports are not inspectable), and
+Microsandbox secret interception (external value, guest placeholder,
+destinations). Secret destinations never grant network access. Unconfigured
+creates use default-deny with DNS and loopback only.
 
-Ownership evidence stamps reserved OCI labels and reserved image-config ENV
-markers. After load, ENV-only ownership is accepted only when reserved labels
-are entirely absent (Phase 4 amendment for Microsandbox `0.6.6`, which drops
-OCI labels but preserves ENV). Any present partial or contradictory reserved
-evidence fails closed. A matching tag alone is never ownership evidence.
+Phase 4 remains in place for Dockerfile-backed profiles: content-addressed
+identity, Docker build → ownership stamp → export → `msb image load`,
+in-process coalescing, and CLI `build` / `image list` / `image remove`.
 
-Later phases add networking, QCOW2 volumes, remote transport, and the Sandcastle
-adapter.
+Later phases add QCOW2 volumes, remote transport, and the Sandcastle adapter.
 
 ## Development
 
@@ -40,19 +41,27 @@ pnpm test:acceptance       # optional real Microsandbox (needs runtime)
                            # unavailable is reported as a skipped Vitest test, not a pass
 ```
 
-## Quick start (Phase 4)
+## Quick start (Phase 5)
 
 ```bash
 sbox init --project demo
-# Edit sbox.yaml: use `image: alpine:3.20` or a `build:` block with context/Dockerfile
+# Edit sbox.yaml — networking example:
+#   network:
+#     mode: default-deny
+#     allow:
+#       - domain: example.com
+#     publish:
+#       - guest: 8080
+#         host: 18080          # required on 0.6.6; bind defaults to 127.0.0.1
+#   secrets:
+#     - env: API_TOKEN
+#       value: { env: API_TOKEN }
+#       destinations: [api.example.com]
 sbox config validate
-sbox build default          # requires a build: profile (errors for image: refs)
 sbox up default
-sbox image list
 sbox exec default -- printf '%s' hello
 sbox stop default
 sbox remove default
-sbox image remove <exact-image>   # generated refs only
 ```
 
 Programmatic equivalent:

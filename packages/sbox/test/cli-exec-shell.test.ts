@@ -6,6 +6,7 @@ import { EXIT_CANCELLED, EXIT_SUCCESS, SboxError } from "../src/index.js";
 import { runCli } from "../src/cli/runner.js";
 import { FakeHost } from "../src/fake-host.js";
 import { assertSandboxIdentity } from "../src/identity.js";
+import { defaultNetworkConfig, toSafeNetworkConfig } from "../src/network/types.js";
 
 function collectingIo(cwd: string) {
   let stdout = "";
@@ -58,7 +59,14 @@ async function seedDefault(host: FakeHost): Promise<void> {
       instance: "default",
     }),
     state: "running",
-    creation: { image: "alpine:3.20", cpus: 1, memoryMiB: 512, shell: "/bin/sh" },
+    creation: {
+      image: "alpine:3.20",
+      cpus: 1,
+      memoryMiB: 512,
+      shell: "/bin/sh",
+      network: toSafeNetworkConfig(defaultNetworkConfig()),
+      secrets: [],
+    },
   });
 }
 

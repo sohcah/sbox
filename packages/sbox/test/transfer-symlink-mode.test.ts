@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { FakeHost } from "../src/fake-host.js";
 import { assertSandboxIdentity, type SandboxIdentity } from "../src/index.js";
 import { assertStandaloneSymlinkTarget, isSafeSymlinkTarget } from "../src/transfer/paths.js";
+import { defaultNetworkConfig, toSafeNetworkConfig } from "../src/network/types.js";
 
 function identity(): SandboxIdentity {
   return assertSandboxIdentity({
@@ -19,7 +20,13 @@ function seedRunning(host: FakeHost): SandboxIdentity {
   host.seed({
     identity: id,
     state: "running",
-    creation: { image: "alpine:3.20", cpus: 1, memoryMiB: 512 },
+    creation: {
+      image: "alpine:3.20",
+      cpus: 1,
+      memoryMiB: 512,
+      network: toSafeNetworkConfig(defaultNetworkConfig()),
+      secrets: [],
+    },
   });
   return id;
 }

@@ -12,6 +12,7 @@ import type {
 } from "../../src/native-runtime.js";
 import type { LabelMap } from "../../src/ownership.js";
 import { PHASE1_DEFAULT_CPUS, PHASE1_DEFAULT_MEMORY_MIB } from "../../src/immutable-creation.js";
+import { defaultNetworkConfig, toSafeRuntimeSecret } from "../../src/network/types.js";
 
 interface Stored {
   record: NativeSandboxRecord;
@@ -68,6 +69,8 @@ export class MemoryNativeRuntime implements NativeRuntime {
           maxDurationSecs: null,
           idleTimeoutSecs: null,
           env: Object.freeze({}),
+          network: defaultNetworkConfig(),
+          secrets: [],
         },
       });
       throw SboxError.internal("Simulated uncertain create failure (conflict).");
@@ -183,8 +186,19 @@ export class MemoryNativeRuntime implements NativeRuntime {
     };
   }
 
-  seed(record: NativeSandboxRecord): void {
-    this.byName.set(record.name, { record: cloneRecord(record) });
+  seed(
+    record: Omit<NativeSandboxRecord, "network" | "secrets"> & {
+      readonly network?: NativeSandboxRecord["network"];
+      readonly secrets?: NativeSandboxRecord["secrets"];
+    },
+  ): void {
+    this.byName.set(record.name, {
+      record: cloneRecord({
+        ...record,
+        network: record.network ?? defaultNetworkConfig(),
+        secrets: record.secrets ?? [],
+      }),
+    });
   }
 
   private makeLive(name: string): NativeLiveHandle {
@@ -235,6 +249,16 @@ export class MemoryNativeRuntime implements NativeRuntime {
       maxDurationSecs: request.maxDurationSecs,
       idleTimeoutSecs: request.idleTimeoutSecs,
       env: Object.freeze({ ...request.env }),
+      network: request.network,
+      secrets: Object.freeze(
+        request.secrets.map((secret) =>
+          toSafeRuntimeSecret({
+            env: secret.env,
+            placeholder: secret.placeholder,
+            destinations: secret.destinations,
+          }),
+        ),
+      ),
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
     };
@@ -250,5 +274,19 @@ function cloneRecord(record: NativeSandboxRecord): NativeSandboxRecord {
     ...record,
     labels: freeze(record.labels),
     env: Object.freeze({ ...record.env }),
+    network: {
+      mode: record.network.mode,
+      allow: Object.freeze([...record.network.allow]),
+      publish: Object.freeze(record.network.publish.map((port) => Object.freeze({ ...port }))),
+    },
+    secrets: Object.freeze(
+      record.secrets.map((secret) =>
+        toSafeRuntimeSecret({
+          env: secret.env,
+          placeholder: secret.placeholder,
+          destinations: secret.destinations,
+        }),
+      ),
+    ),
   };
 }

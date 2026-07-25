@@ -5,6 +5,14 @@
  */
 
 import type { SandboxImmutableCreation } from "./ownership-adoption.js";
+import {
+  defaultNetworkConfig,
+  toSafeRuntimeSecret,
+  type HostNetworkConfig,
+  type ResolvedRuntimeSecret,
+  type SafeRuntimeSecret,
+} from "./network/types.js";
+import { canonicalNetworkFingerprint, canonicalSecretsFingerprint } from "./network/compile.js";
 
 /** SDK defaults observed from microsandbox@0.6.6 minimal builder.build(). */
 export const PHASE1_DEFAULT_CPUS = 1;
@@ -26,7 +34,18 @@ export function projectCreateRequest(request: {
   readonly env?: Readonly<Record<string, string>>;
   readonly maxDurationSecs?: number | null;
   readonly idleTimeoutSecs?: number | null;
+  readonly network?: HostNetworkConfig;
+  readonly secrets?: readonly ResolvedRuntimeSecret[];
 }): SandboxImmutableCreation {
+  const secrets: readonly SafeRuntimeSecret[] = Object.freeze(
+    (request.secrets ?? []).map((secret) =>
+      toSafeRuntimeSecret({
+        env: secret.env,
+        placeholder: secret.placeholder,
+        destinations: secret.destinations,
+      }),
+    ),
+  );
   return Object.freeze({
     image: request.image,
     cpus: request.cpus ?? PHASE1_DEFAULT_CPUS,
@@ -38,6 +57,8 @@ export function projectCreateRequest(request: {
     env: Object.freeze(request.env === undefined ? {} : { ...request.env }),
     maxDurationSecs: request.maxDurationSecs ?? null,
     idleTimeoutSecs: request.idleTimeoutSecs ?? null,
+    network: request.network ?? defaultNetworkConfig(),
+    secrets,
   });
 }
 
@@ -55,7 +76,11 @@ export function immutableCreationEquals(
     left.hostname === right.hostname &&
     left.maxDurationSecs === right.maxDurationSecs &&
     left.idleTimeoutSecs === right.idleTimeoutSecs &&
-    envRecordsEqual(left.env, right.env)
+    envRecordsEqual(left.env, right.env) &&
+    JSON.stringify(canonicalNetworkFingerprint(left.network)) ===
+      JSON.stringify(canonicalNetworkFingerprint(right.network)) &&
+    JSON.stringify(canonicalSecretsFingerprint(left.secrets)) ===
+      JSON.stringify(canonicalSecretsFingerprint(right.secrets))
   );
 }
 
@@ -97,6 +122,18 @@ export function immutableCreationDriftFields(
   }
   if (!envRecordsEqual(expected.env, actual.env)) {
     fields.push("environment");
+  }
+  if (
+    JSON.stringify(canonicalNetworkFingerprint(expected.network)) !==
+    JSON.stringify(canonicalNetworkFingerprint(actual.network))
+  ) {
+    fields.push("network");
+  }
+  if (
+    JSON.stringify(canonicalSecretsFingerprint(expected.secrets)) !==
+    JSON.stringify(canonicalSecretsFingerprint(actual.secrets))
+  ) {
+    fields.push("secrets");
   }
   return fields;
 }

@@ -5,7 +5,12 @@
 import { resolve } from "node:path";
 import { assertProjectId, assertSandboxIdentity, type SandboxIdentity } from "../identity.js";
 import type { HostCreateRequest, SandboxInspection } from "../types.js";
-import type { ImageBuildConfig, ProfileConfig, ProjectConfig } from "../config/types.js";
+import type {
+  ConfigurationIssue,
+  ImageBuildConfig,
+  ProfileConfig,
+  ProjectConfig,
+} from "../config/types.js";
 import { isBuildProfile } from "../config/types.js";
 import {
   resolveEnvironmentMap,
@@ -26,7 +31,25 @@ import type { ImageIdentityInputs } from "../image/compute.js";
 import type { HostEnsureImageRequest } from "../image/types.js";
 import { hostDockerPlatform } from "../image/platform.js";
 import { normalizePosixRelative } from "../image/context.js";
-import type { ConfigurationIssue } from "../config/types.js";
+import { throwAccumulatedValidation } from "../config/validate.js";
+import {
+  mergeNetworkConfigs,
+  normalizeAllowRule,
+  type RawNetworkAllowRule,
+} from "../network/normalize.js";
+import {
+  defaultNetworkConfig,
+  type HostNetworkConfig,
+  type NetworkAllowRule,
+  type PublishedPortSpec,
+  type ResolvedRuntimeSecret,
+  type RuntimeSecretConfig,
+} from "../network/types.js";
+import {
+  defaultPlaceholder,
+  validateHostNetworkConfig,
+  validateResolvedRuntimeSecrets,
+} from "../network/validate.js";
 
 export interface ResolveCreateInput {
   readonly project: ProjectConfig;
@@ -40,6 +63,12 @@ export interface ResolveCreateInput {
    * image reference produced by `ensureImage`.
    */
   readonly resolvedImage?: string;
+  /** Extra outbound allow rules merged onto the profile network. */
+  readonly networkAllow?: readonly NetworkAllowRule[] | readonly RawNetworkAllowRule[];
+  /** Extra published ports merged onto the profile network. */
+  readonly networkPublish?: readonly PublishedPortSpec[];
+  /** Extra runtime secrets merged after profile secrets. */
+  readonly secrets?: readonly RuntimeSecretConfig[];
 }
 
 export interface ResolvedCreateIntent {
@@ -73,10 +102,103 @@ export async function resolveCreateIntent(
     ...input.env,
   });
 
+  const network = mergeProfileNetwork(
+    selected.profile,
+    selected.name,
+    input.networkAllow,
+    input.networkPublish,
+  );
+
+  const secretsResult = await resolveRuntimeSecrets(
+    [...(selected.profile.secrets ?? []), ...(input.secrets ?? [])],
+    `profiles.${selected.name}.secrets`,
+    input.external,
+  );
+  if (!secretsResult.ok) {
+    throwMissingExternalReferences(secretsResult.issues);
+  }
+
+  const networkIssues = validateHostNetworkConfig(network);
+  const secretIssues = validateResolvedRuntimeSecrets(secretsResult.values);
+  const issues = [...networkIssues, ...secretIssues];
+  if (issues.length > 0) {
+    throwAccumulatedValidation(issues, "Sandbox network/secret validation failed.");
+  }
+
   const image = resolveProfileImage(selected.profile, selected.name, input.resolvedImage);
-  const request = profileToCreateRequest(identity, selected.profile, env, image);
+  const request = profileToCreateRequest(
+    identity,
+    selected.profile,
+    env,
+    image,
+    network,
+    secretsResult.values,
+  );
   const projected = projectCreateRequest(request);
   return { identity, request, projected };
+}
+
+function mergeProfileNetwork(
+  profile: ProfileConfig,
+  profileName: string,
+  networkAllow: ResolveCreateInput["networkAllow"],
+  networkPublish: ResolveCreateInput["networkPublish"],
+): HostNetworkConfig {
+  const base = profile.network ?? defaultNetworkConfig();
+  const extraAllow = (networkAllow ?? []).map((rule) =>
+    normalizeAllowRule(rule as RawNetworkAllowRule | NetworkAllowRule),
+  );
+  const extraPublish = [...(networkPublish ?? [])];
+  try {
+    return mergeNetworkConfigs(base, extraAllow, extraPublish);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Cannot add network allow rules or published ports when mode is disabled.";
+    throwAccumulatedValidation(
+      [
+        {
+          path: `profiles.${profileName}.network`,
+          message,
+        },
+      ],
+      "Sandbox network/secret validation failed.",
+    );
+  }
+}
+
+async function resolveRuntimeSecrets(
+  configs: readonly RuntimeSecretConfig[],
+  pathPrefix: string,
+  external: ExternalResolutionContext,
+): Promise<
+  | { readonly ok: true; readonly values: readonly ResolvedRuntimeSecret[] }
+  | { readonly ok: false; readonly issues: readonly ConfigurationIssue[] }
+> {
+  const values: ResolvedRuntimeSecret[] = [];
+  const issues: ConfigurationIssue[] = [];
+  for (let i = 0; i < configs.length; i += 1) {
+    const secret = configs[i]!;
+    const path = `${pathPrefix}.${i}`;
+    const resolved = await resolveExternalValue(secret.value, `${path}.value`, external);
+    if (!resolved.ok) {
+      issues.push(resolved.issue);
+      continue;
+    }
+    values.push(
+      Object.freeze({
+        env: secret.env,
+        value: resolved.value,
+        placeholder: secret.placeholder ?? defaultPlaceholder(secret.env),
+        destinations: Object.freeze([...secret.destinations]),
+      }),
+    );
+  }
+  if (issues.length > 0) {
+    return { ok: false, issues };
+  }
+  return { ok: true, values: Object.freeze(values) };
 }
 
 function resolveProfileImage(
@@ -100,6 +222,8 @@ export function profileToCreateRequest(
   profile: ProfileConfig,
   env: Readonly<Record<string, string>>,
   image: string,
+  network: HostNetworkConfig,
+  secrets: readonly ResolvedRuntimeSecret[],
 ): HostCreateRequest {
   return {
     identity,
@@ -113,6 +237,8 @@ export function profileToCreateRequest(
     ...(profile.maxDurationSecs !== undefined ? { maxDurationSecs: profile.maxDurationSecs } : {}),
     ...(profile.idleTimeoutSecs !== undefined ? { idleTimeoutSecs: profile.idleTimeoutSecs } : {}),
     ...(Object.keys(env).length > 0 ? { env } : {}),
+    network,
+    ...(secrets.length > 0 ? { secrets } : {}),
   };
 }
 
@@ -274,6 +400,17 @@ export function reportCreationDrift(
     ...(inspection.creation.idleTimeoutSecs !== undefined
       ? { idleTimeoutSecs: inspection.creation.idleTimeoutSecs }
       : {}),
+    network: {
+      mode: inspection.creation.network.mode,
+      allow: inspection.creation.network.allow,
+      publish: inspection.creation.network.publish,
+    },
+    secrets: inspection.creation.secrets.map((secret) => ({
+      env: secret.env,
+      placeholder: secret.placeholder,
+      destinations: secret.destinations,
+      value: "",
+    })),
   });
 
   const expectedVisible: SandboxImmutableCreation = Object.freeze({

@@ -142,6 +142,23 @@ export type {
   VolumeDeclaration,
 } from "./config/types.js";
 
+export type {
+  HostNetworkConfig,
+  InspectedPublishedPort,
+  NetworkAllowRule,
+  NetworkConfig,
+  NetworkMode,
+  NetworkPortSpec,
+  NetworkProtocol,
+  PublishedPortSpec,
+  ResolvedRuntimeSecret,
+  RuntimeSecretConfig,
+  SafeNetworkConfig,
+  SafeRuntimeSecret,
+} from "./network/types.js";
+
+export { defaultNetworkConfig, DEFAULT_NETWORK_BIND } from "./network/types.js";
+
 export { isBuildProfile, isImageReferenceProfile } from "./config/types.js";
 
 export {

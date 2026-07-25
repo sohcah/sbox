@@ -4,6 +4,13 @@
  * The typed in-memory model is primary. YAML is an adapter over these types.
  */
 
+import type {
+  NetworkConfig,
+  RuntimeSecretConfig,
+  SafeNetworkConfig,
+  SafeRuntimeSecret,
+} from "../network/types.js";
+
 /** Structured external value reference. Literals are plain strings. */
 export type ExternalValueRef =
   | { readonly env: string }
@@ -57,6 +64,13 @@ export interface ProfileCommon {
   readonly maxDurationSecs?: number | null;
   /** Native idle timeout in seconds. */
   readonly idleTimeoutSecs?: number | null;
+  /** Curated network policy. Omit for default-deny with no extra allow/publish. */
+  readonly network?: NetworkConfig;
+  /**
+   * Curated Microsandbox secret interception. Values are external refs only.
+   * Destinations do not grant network access.
+   */
+  readonly secrets?: readonly RuntimeSecretConfig[];
 }
 
 /** Existing OCI/native image reference profile. */
@@ -140,6 +154,8 @@ export interface SafeProjectConfig {
         readonly environment: Readonly<Record<string, "literal" | "env" | "file" | "invocation">>;
         readonly maxDurationSecs?: number | null;
         readonly idleTimeoutSecs?: number | null;
+        readonly network?: SafeNetworkConfig;
+        readonly secrets?: readonly SafeRuntimeSecret[];
       }
     >
   >;

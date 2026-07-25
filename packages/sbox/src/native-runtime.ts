@@ -7,6 +7,11 @@
 
 import type { LabelMap } from "./ownership.js";
 import type { SandboxLifecycleState } from "./types.js";
+import type {
+  HostNetworkConfig,
+  ResolvedRuntimeSecret,
+  SafeRuntimeSecret,
+} from "./network/types.js";
 
 export interface NativeSandboxRecord {
   readonly name: string;
@@ -23,6 +28,8 @@ export interface NativeSandboxRecord {
   readonly idleTimeoutSecs: number | null;
   /** Ordinary environment only; never logged or placed in public inspection. */
   readonly env: Readonly<Record<string, string>>;
+  readonly network: HostNetworkConfig;
+  readonly secrets: readonly SafeRuntimeSecret[];
   readonly createdAt?: string;
   readonly updatedAt?: string;
 }
@@ -40,6 +47,8 @@ export interface NativeCreateRequest {
   readonly maxDurationSecs: number | null;
   readonly idleTimeoutSecs: number | null;
   readonly env: Readonly<Record<string, string>>;
+  readonly network: HostNetworkConfig;
+  readonly secrets: readonly ResolvedRuntimeSecret[];
   /** When true, create as native detached / non-ephemeral. */
   readonly detached: boolean;
 }

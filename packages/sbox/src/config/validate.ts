@@ -18,6 +18,17 @@ import { projectConfigSchema, userConfigSchema, yamlProjectInputSchema } from ".
 import { parseBinarySizeToMiB, parseDurationToSecs } from "./scalars.js";
 import { SboxError } from "../errors.js";
 import type { ZodError, ZodType } from "zod";
+import {
+  normalizeNetworkConfig,
+  normalizeRuntimeSecrets,
+  type RawNetworkConfig,
+} from "../network/normalize.js";
+import { toSafeNetworkConfig, toSafeRuntimeSecret } from "../network/types.js";
+import {
+  defaultPlaceholder,
+  validateHostNetworkConfig,
+  validateRuntimeSecretConfigs,
+} from "../network/validate.js";
 
 export function issuesFromZodError(error: ZodError): ConfigurationIssue[] {
   return error.issues.map((issue) => ({
@@ -107,6 +118,13 @@ type YamlProfileInput = {
   readonly idleTimeoutSecs?: number | null;
   readonly maxDuration?: string | null;
   readonly idleTimeout?: string | null;
+  readonly network?: RawNetworkConfig;
+  readonly secrets?: readonly {
+    readonly env: string;
+    readonly value: ExternalValueRef;
+    readonly placeholder?: string;
+    readonly destinations: readonly string[];
+  }[];
 };
 
 /** Normalize YAML input into the typed project model. */
@@ -119,6 +137,7 @@ function normalizeYamlProjectInput(input: {
   readonly profiles: Readonly<Record<string, YamlProfileInput>>;
 }): ProjectConfig {
   const profiles: Record<string, ProfileConfig> = {};
+  const issues: ConfigurationIssue[] = [];
   for (const [name, profile] of Object.entries(input.profiles)) {
     const memoryMiB =
       profile.memoryMiB ??
@@ -142,6 +161,17 @@ function normalizeYamlProjectInput(input: {
             ? null
             : parseDurationToSecs(profile.idleTimeout, `profiles.${name}.idleTimeout`);
 
+    const network =
+      profile.network !== undefined ? normalizeNetworkConfig(profile.network) : undefined;
+    const secrets =
+      profile.secrets !== undefined ? normalizeRuntimeSecrets(profile.secrets) : undefined;
+    if (network !== undefined) {
+      issues.push(...validateHostNetworkConfig(network, `profiles.${name}.network`));
+    }
+    if (secrets !== undefined) {
+      issues.push(...validateRuntimeSecretConfigs(secrets, `profiles.${name}.secrets`));
+    }
+
     const common = {
       ...(profile.cpus !== undefined ? { cpus: profile.cpus } : {}),
       ...(memoryMiB !== undefined ? { memoryMiB } : {}),
@@ -152,6 +182,8 @@ function normalizeYamlProjectInput(input: {
       ...(profile.environment !== undefined ? { environment: { ...profile.environment } } : {}),
       ...(maxDurationSecs !== undefined ? { maxDurationSecs } : {}),
       ...(idleTimeoutSecs !== undefined ? { idleTimeoutSecs } : {}),
+      ...(network !== undefined ? { network } : {}),
+      ...(secrets !== undefined ? { secrets } : {}),
     };
 
     if (profile.build !== undefined) {
@@ -165,6 +197,10 @@ function normalizeYamlProjectInput(input: {
         ...common,
       };
     }
+  }
+
+  if (issues.length > 0) {
+    throwAccumulatedValidation(issues, "Project YAML validation failed.");
   }
 
   return freezeProjectConfig({
@@ -259,6 +295,18 @@ export function toSafeProjectConfig(config: ProjectConfig): SafeProjectConfig {
       ...(profile.idleTimeoutSecs !== undefined
         ? { idleTimeoutSecs: profile.idleTimeoutSecs }
         : {}),
+      ...(profile.network !== undefined ? { network: toSafeNetworkConfig(profile.network) } : {}),
+      ...(profile.secrets !== undefined
+        ? {
+            secrets: profile.secrets.map((secret) =>
+              toSafeRuntimeSecret({
+                env: secret.env,
+                placeholder: secret.placeholder ?? defaultPlaceholder(secret.env),
+                destinations: secret.destinations,
+              }),
+            ),
+          }
+        : {}),
     };
   }
   return {
@@ -351,6 +399,7 @@ function normalizeProjectShape(value: {
   readonly profiles: Readonly<Record<string, ProfileConfig>>;
 } {
   const profiles: Record<string, ProfileConfig> = {};
+  const issues: ConfigurationIssue[] = [];
   for (const [name, profile] of Object.entries(value.profiles)) {
     const cleaned = stripUndefined(profile);
     if (cleaned["build"] !== undefined && typeof cleaned["build"] === "object") {
@@ -358,7 +407,29 @@ function normalizeProjectShape(value: {
         stripUndefined(cleaned["build"] as Record<string, unknown>) as unknown as ImageBuildConfig,
       );
     }
+    if (cleaned["network"] !== undefined) {
+      const network = normalizeNetworkConfig(cleaned["network"] as RawNetworkConfig);
+      const networkIssues = validateHostNetworkConfig(network, `profiles.${name}.network`);
+      issues.push(...networkIssues);
+      cleaned["network"] = network;
+    }
+    if (cleaned["secrets"] !== undefined) {
+      const secrets = normalizeRuntimeSecrets(
+        cleaned["secrets"] as readonly {
+          readonly env: string;
+          readonly value: ExternalValueRef;
+          readonly placeholder?: string;
+          readonly destinations: readonly string[];
+        }[],
+      );
+      const secretIssues = validateRuntimeSecretConfigs(secrets, `profiles.${name}.secrets`);
+      issues.push(...secretIssues);
+      cleaned["secrets"] = secrets;
+    }
     profiles[name] = cleaned as unknown as ProfileConfig;
+  }
+  if (issues.length > 0) {
+    throwAccumulatedValidation(issues, "Project configuration validation failed.");
   }
   return {
     version: 1,
@@ -427,6 +498,12 @@ function freezeProjectConfig(config: {
       ...(frozenBuild !== undefined ? { build: frozenBuild } : {}),
       ...(profile.environment !== undefined
         ? { environment: Object.freeze({ ...profile.environment }) }
+        : {}),
+      ...(profile.network !== undefined
+        ? { network: normalizeNetworkConfig(profile.network) }
+        : {}),
+      ...(profile.secrets !== undefined
+        ? { secrets: normalizeRuntimeSecrets(profile.secrets) }
         : {}),
     }) as ProfileConfig;
   }

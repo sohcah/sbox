@@ -41,6 +41,11 @@
   "network": {
     "enabled": true,
     "ports": [],
+    "policy": {
+      "defaultEgress": "deny",
+      "defaultIngress": "deny",
+      "rules": []
+    },
     "maxConnections": null,
     "trustHostCas": false
   },

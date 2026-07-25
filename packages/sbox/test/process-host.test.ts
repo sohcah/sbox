@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeHost } from "../src/fake-host.js";
+import { defaultNetworkConfig, toSafeNetworkConfig } from "../src/network/types.js";
 import {
   SECRET_LOG_CANARY_KEYS,
   assertSandboxIdentity,
@@ -18,7 +19,13 @@ function seedRunning(host: FakeHost, id = identity()): SandboxIdentity {
   host.seed({
     identity: id,
     state: "running",
-    creation: { image: "alpine:3.20", cpus: 1, memoryMiB: 512 },
+    creation: {
+      image: "alpine:3.20",
+      cpus: 1,
+      memoryMiB: 512,
+      network: toSafeNetworkConfig(defaultNetworkConfig()),
+      secrets: [],
+    },
   });
   return id;
 }

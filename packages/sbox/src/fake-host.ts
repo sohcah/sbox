@@ -72,6 +72,17 @@ import type {
   SandboxSummary,
 } from "./types.js";
 import { sandboxIdentityKey } from "./types.js";
+import {
+  DEFAULT_NETWORK_BIND,
+  defaultNetworkConfig,
+  toSafeNetworkConfig,
+  type HostNetworkConfig,
+} from "./network/types.js";
+import {
+  isDynamicHostPort,
+  validateHostNetworkConfig,
+  validateResolvedRuntimeSecrets,
+} from "./network/validate.js";
 
 export interface FakeHostOptions {
   readonly logger?: Logger;
@@ -106,10 +117,14 @@ export class FakeHost implements Host {
   private readonly logger: Logger;
   private readonly now: () => Date;
   private disposed = false;
+  /** Next host port for dynamic publish allocations (host undefined or 0). */
+  private nextDynamicHostPort = 40000;
   /** Test helper: Host method names invoked through the public Host contract. */
   readonly operations: string[] = [];
   /** Optional override for fake exec behavior. */
   execHandler = defaultFakeExec;
+  /** When false, create rejects omitted/0 host ports with capability. */
+  dynamicHostPorts = true;
 
   constructor(options: FakeHostOptions = {}) {
     this.logger = createRedactingLogger(options.logger ?? silentLogger);
@@ -148,7 +163,8 @@ export class FakeHost implements Host {
 
       const timestamp = this.now().toISOString();
       const projected = projectCreateRequest(request);
-      const creation = creationFromProjection(projected);
+      const network = this.allocateDynamicHostPorts(projected.network);
+      const creation = creationFromProjection({ ...projected, network });
       const stored: StoredSandbox = {
         identity,
         nativeName,
@@ -248,6 +264,7 @@ export class FakeHost implements Host {
     this.operations.push("capabilities");
     return this.withOperation("capabilities", undefined, options, async () => ({
       localMicrosandbox: false,
+      dynamicHostPorts: this.dynamicHostPorts,
       notes: ["FakeHost models the Host contract in memory."],
     }));
   }
@@ -455,17 +472,32 @@ export class FakeHost implements Host {
   seed(input: {
     readonly identity: SandboxIdentity;
     readonly state?: SandboxLifecycleState;
-    readonly creation?: SandboxCreationSettings;
+    readonly creation?: Omit<SandboxCreationSettings, "network" | "secrets"> & {
+      readonly network?: SandboxCreationSettings["network"];
+      readonly secrets?: SandboxCreationSettings["secrets"];
+    };
     readonly nativeName?: NativeSandboxName;
   }): SandboxInspection {
     const identity = assertSandboxIdentity(input.identity);
     const key = sandboxIdentityKey(identity);
     const nativeName = input.nativeName ?? nativeSandboxName(identity.project, identity.instance);
     const timestamp = this.now().toISOString();
-    const creation = input.creation ?? {
-      image: "alpine:3.20",
-      cpus: 1,
-      memoryMiB: 512,
+    const creation = {
+      image: input.creation?.image ?? "alpine:3.20",
+      cpus: input.creation?.cpus ?? 1,
+      memoryMiB: input.creation?.memoryMiB ?? 512,
+      ...(input.creation?.workdir !== undefined ? { workdir: input.creation.workdir } : {}),
+      ...(input.creation?.user !== undefined ? { user: input.creation.user } : {}),
+      ...(input.creation?.shell !== undefined ? { shell: input.creation.shell } : {}),
+      ...(input.creation?.hostname !== undefined ? { hostname: input.creation.hostname } : {}),
+      ...(input.creation?.maxDurationSecs !== undefined
+        ? { maxDurationSecs: input.creation.maxDurationSecs }
+        : {}),
+      ...(input.creation?.idleTimeoutSecs !== undefined
+        ? { idleTimeoutSecs: input.creation.idleTimeoutSecs }
+        : {}),
+      network: input.creation?.network ?? toSafeNetworkConfig(defaultNetworkConfig()),
+      secrets: input.creation?.secrets ?? [],
     };
     const projected = projectCreateRequest({
       image: creation.image,
@@ -481,6 +513,17 @@ export class FakeHost implements Host {
       ...(creation.idleTimeoutSecs !== undefined
         ? { idleTimeoutSecs: creation.idleTimeoutSecs }
         : {}),
+      network: {
+        mode: creation.network.mode,
+        allow: creation.network.allow,
+        publish: creation.network.publish,
+      },
+      secrets: creation.secrets.map((secret) => ({
+        env: secret.env,
+        placeholder: secret.placeholder,
+        destinations: secret.destinations,
+        value: "",
+      })),
     });
     const stored: StoredSandbox = {
       identity,
@@ -513,7 +556,13 @@ export class FakeHost implements Host {
       identity,
       nativeName,
       state: "stopped",
-      creation: { image, cpus: 1, memoryMiB: 512 },
+      creation: {
+        image,
+        cpus: 1,
+        memoryMiB: 512,
+        network: toSafeNetworkConfig(defaultNetworkConfig()),
+        secrets: [],
+      },
       env: {},
       maxDurationSecs: null,
       idleTimeoutSecs: null,
@@ -583,12 +632,27 @@ export class FakeHost implements Host {
       maxDurationSecs: stored.maxDurationSecs,
       idleTimeoutSecs: stored.idleTimeoutSecs,
       env: stored.env,
+      network: {
+        mode: stored.creation.network.mode,
+        allow: stored.creation.network.allow,
+        publish: stored.creation.network.publish,
+      },
+      secrets: stored.creation.secrets.map((secret) => ({
+        env: secret.env,
+        placeholder: secret.placeholder,
+        destinations: secret.destinations,
+        value: "",
+      })),
     });
     return {
       identity: stored.identity,
       nativeName: stored.nativeName,
       state: stored.state,
-      creation: { ...stored.creation },
+      creation: {
+        ...stored.creation,
+        network: stored.creation.network,
+        secrets: [...stored.creation.secrets],
+      },
       labels: buildOwnershipLabels(stored.identity, projected),
       createdAt: stored.createdAt,
       updatedAt: stored.updatedAt,
@@ -632,6 +696,68 @@ export class FakeHost implements Host {
         details: { path: "idleTimeoutSecs" },
       });
     }
+
+    const network = request.network ?? defaultNetworkConfig();
+    const networkIssues = validateHostNetworkConfig(network);
+    const secretIssues = validateResolvedRuntimeSecrets(request.secrets ?? []);
+    const issues = [...networkIssues, ...secretIssues];
+    if (issues.length > 0) {
+      throw SboxError.validation("Sandbox network/secret validation failed.", {
+        details: {
+          issues: issues.map((issue) => ({ path: issue.path, message: issue.message })),
+          issueCount: issues.length,
+        },
+      });
+    }
+
+    // Capability-gated dynamic host ports (toggleable for unit tests).
+    this.assertDynamicHostPortsSupported(network, this.dynamicHostPorts);
+  }
+
+  private assertDynamicHostPortsSupported(
+    network: HostNetworkConfig,
+    dynamicHostPorts: boolean,
+  ): void {
+    if (dynamicHostPorts) {
+      return;
+    }
+    for (let i = 0; i < network.publish.length; i += 1) {
+      if (isDynamicHostPort(network.publish[i]!)) {
+        throw SboxError.capability("This Host does not support dynamic host port allocation.", {
+          details: {
+            path: `network.publish.${i}.host`,
+            message: "Omit host or use 0 only when the Host advertises dynamicHostPorts.",
+          },
+        });
+      }
+    }
+  }
+
+  private allocateDynamicHostPorts(network: HostNetworkConfig): HostNetworkConfig {
+    return Object.freeze({
+      mode: network.mode,
+      allow: Object.freeze([...network.allow]),
+      publish: Object.freeze(
+        network.publish.map((port) => {
+          if (!isDynamicHostPort(port)) {
+            return Object.freeze({
+              guest: port.guest,
+              host: port.host!,
+              ...(port.protocol !== undefined ? { protocol: port.protocol } : {}),
+              ...(port.bind !== undefined ? { bind: port.bind } : {}),
+            });
+          }
+          const host = this.nextDynamicHostPort;
+          this.nextDynamicHostPort += 1;
+          return Object.freeze({
+            guest: port.guest,
+            host,
+            ...(port.protocol !== undefined ? { protocol: port.protocol } : {}),
+            ...(port.bind !== undefined ? { bind: port.bind } : {}),
+          });
+        }),
+      ),
+    });
   }
 
   private async withOperation<T>(
@@ -702,6 +828,16 @@ function creationFromProjection(
     ...(projected.hostname !== null ? { hostname: projected.hostname } : {}),
     ...(projected.maxDurationSecs !== null ? { maxDurationSecs: projected.maxDurationSecs } : {}),
     ...(projected.idleTimeoutSecs !== null ? { idleTimeoutSecs: projected.idleTimeoutSecs } : {}),
+    network: toSafeNetworkConfig(
+      projected.network,
+      projected.network.publish.map((port) => ({
+        guest: port.guest,
+        host: port.host ?? 0,
+        protocol: port.protocol ?? "tcp",
+        bind: port.bind ?? DEFAULT_NETWORK_BIND,
+      })),
+    ),
+    secrets: [...projected.secrets],
   };
 }
 

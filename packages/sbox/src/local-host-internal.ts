@@ -76,6 +76,12 @@ import type {
   SandboxInspection,
   SandboxSummary,
 } from "./types.js";
+import { defaultNetworkConfig, toSafeNetworkConfig } from "./network/types.js";
+import {
+  isDynamicHostPort,
+  validateHostNetworkConfig,
+  validateResolvedRuntimeSecrets,
+} from "./network/validate.js";
 
 /** Internal testing seam. Not exported from the package root. */
 export interface LocalHostInternalOptions {
@@ -128,6 +134,8 @@ class LocalHost implements Host {
           maxDurationSecs: projected.maxDurationSecs,
           idleTimeoutSecs: projected.idleTimeoutSecs,
           env: projected.env,
+          network: projected.network,
+          secrets: request.secrets ?? [],
         });
         published = true;
         this.liveByName.set(nativeName, live);
@@ -295,7 +303,13 @@ class LocalHost implements Host {
       const probe = await this.runtime.probe();
       return {
         localMicrosandbox: probe.available,
-        notes: probe.notes,
+        // Microsandbox 0.6.6 accepts host port 0 but does not expose the allocated
+        // port via inspectable sandbox config, so dynamic publication is gated off.
+        dynamicHostPorts: false,
+        notes: [
+          ...probe.notes,
+          "Dynamic host ports are not advertised: allocated ports are not inspectable on Microsandbox 0.6.6.",
+        ],
       };
     });
   }
@@ -708,6 +722,32 @@ class LocalHost implements Host {
         details: { path: "idleTimeoutSecs" },
       });
     }
+
+    const network = request.network ?? defaultNetworkConfig();
+    const networkIssues = validateHostNetworkConfig(network);
+    const secretIssues = validateResolvedRuntimeSecrets(request.secrets ?? []);
+    const issues = [...networkIssues, ...secretIssues];
+    if (issues.length > 0) {
+      throw SboxError.validation("Sandbox network/secret validation failed.", {
+        details: {
+          issues: issues.map((issue) => ({ path: issue.path, message: issue.message })),
+          issueCount: issues.length,
+        },
+      });
+    }
+    // Capability-gated: Microsandbox 0.6.6 accepts host 0 but does not expose the
+    // allocated port for inspection, so LocalHost refuses dynamic publication.
+    for (let i = 0; i < network.publish.length; i += 1) {
+      if (isDynamicHostPort(network.publish[i]!)) {
+        throw SboxError.capability("This Host does not support dynamic host port allocation.", {
+          details: {
+            path: `network.publish.${i}.host`,
+            message:
+              "Omit host or use 0 only when the Host advertises dynamicHostPorts. Specify an explicit host port between 1 and 65535.",
+          },
+        });
+      }
+    }
   }
 
   private async withOperation<T>(
@@ -778,6 +818,8 @@ function creationFromRecord(record: NativeSandboxRecord): SandboxCreationSetting
     ...(record.hostname !== null ? { hostname: record.hostname } : {}),
     ...(record.maxDurationSecs !== null ? { maxDurationSecs: record.maxDurationSecs } : {}),
     ...(record.idleTimeoutSecs !== null ? { idleTimeoutSecs: record.idleTimeoutSecs } : {}),
+    network: toSafeNetworkConfig(record.network),
+    secrets: [...record.secrets],
   };
 }
 

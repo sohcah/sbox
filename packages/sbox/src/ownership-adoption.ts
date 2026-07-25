@@ -15,6 +15,8 @@ import {
   type LabelMap,
   type OwnershipMatch,
 } from "./ownership.js";
+import { canonicalNetworkFingerprint, canonicalSecretsFingerprint } from "./network/compile.js";
+import type { HostNetworkConfig, SafeRuntimeSecret } from "./network/types.js";
 
 /**
  * Complete Phase 1 immutable creation projection used for ownership/adoption.
@@ -31,6 +33,8 @@ export interface SandboxImmutableCreation {
   readonly env: Readonly<Record<string, string>>;
   readonly maxDurationSecs: number | null;
   readonly idleTimeoutSecs: number | null;
+  readonly network: HostNetworkConfig;
+  readonly secrets: readonly SafeRuntimeSecret[];
 }
 
 /**
@@ -93,6 +97,8 @@ export type NativeCreationEvidence = {
   readonly env: Readonly<Record<string, string>>;
   readonly maxDurationSecs: number | null;
   readonly idleTimeoutSecs: number | null;
+  readonly network: HostNetworkConfig;
+  readonly secrets: readonly SafeRuntimeSecret[];
 };
 
 /**
@@ -131,6 +137,8 @@ export function nativeRecordMatchesCreation(
     readonly env: Readonly<Record<string, string>>;
     readonly maxDurationSecs: number | null;
     readonly idleTimeoutSecs: number | null;
+    readonly network: HostNetworkConfig;
+    readonly secrets: readonly SafeRuntimeSecret[];
   },
   requested: SandboxImmutableCreation,
 ): boolean {
@@ -161,6 +169,18 @@ export function nativeRecordMatchesCreation(
   if (record.idleTimeoutSecs !== requested.idleTimeoutSecs) {
     return false;
   }
+  if (
+    JSON.stringify(canonicalNetworkFingerprint(record.network)) !==
+    JSON.stringify(canonicalNetworkFingerprint(requested.network))
+  ) {
+    return false;
+  }
+  if (
+    JSON.stringify(canonicalSecretsFingerprint(record.secrets)) !==
+    JSON.stringify(canonicalSecretsFingerprint(requested.secrets))
+  ) {
+    return false;
+  }
   return envMatchesAllowingSdkInjected(requested.env, record.env);
 }
 
@@ -187,9 +207,7 @@ function envMatchesAllowingSdkInjected(
 
 /**
  * Stable fingerprint of non-secret immutable creation fields.
- * Environment values are intentionally excluded: they are compared against
- * decoded native configuration during adoption, and must not appear (even
- * hashed) in publicly inspectable labels.
+ * Environment and secret values are intentionally excluded.
  */
 function creationFingerprint(projection: SandboxImmutableCreation): string {
   const canonical = JSON.stringify({
@@ -202,6 +220,8 @@ function creationFingerprint(projection: SandboxImmutableCreation): string {
     hostname: projection.hostname,
     maxDurationSecs: projection.maxDurationSecs,
     idleTimeoutSecs: projection.idleTimeoutSecs,
+    network: canonicalNetworkFingerprint(projection.network),
+    secrets: canonicalSecretsFingerprint(projection.secrets),
   });
   return createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 32);
 }

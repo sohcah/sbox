@@ -10,6 +10,8 @@ import {
 } from "../src/immutable-creation.js";
 import { nativeRecordMatchesCreation } from "../src/ownership-adoption.js";
 import { decodeSandboxConfig } from "../src/sandbox-config.js";
+import { defaultNetworkConfig } from "../src/network/types.js";
+import { collectDecodableRecordsFromHandles } from "../src/microsandbox-runtime.js";
 
 const fixturePath = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -36,6 +38,12 @@ describe("decodeSandboxConfig (microsandbox@0.6.6)", () => {
       "dev.sohcah.sbox/instance": "main",
       "dev.sohcah.sbox/profile": "default",
     });
+    expect(decoded.network).toEqual({
+      mode: "default-deny",
+      allow: [],
+      publish: [],
+    });
+    expect(decoded.secrets).toEqual([]);
   });
 
   it("rejects flattened speculative shapes", () => {
@@ -46,6 +54,78 @@ describe("decodeSandboxConfig (microsandbox@0.6.6)", () => {
         memory: 512,
       }),
     ).toThrow(/SandboxConfig\.image must be an object/);
+  });
+
+  it("fails closed when enabled networking has no deny/deny policy", async () => {
+    const raw = JSON.parse(await readFile(fixturePath, "utf8")) as {
+      network: Record<string, unknown>;
+    };
+    raw.network = { enabled: true, ports: [] };
+    expect(() => decodeSandboxConfig(raw)).toThrow(/policy is required/);
+  });
+
+  it("list decoding skips unrestricted sandboxes beside owned deny-policy ones", async () => {
+    const owned = JSON.parse(await readFile(fixturePath, "utf8")) as Record<string, unknown>;
+    const unrestricted = {
+      ...owned,
+      name: "foreign-unrestricted",
+      network: { enabled: true, ports: [] },
+      labels: { "other/managed": "true" },
+    };
+    const handles = [
+      {
+        name: "owned",
+        status: "stopped",
+        createdAt: null,
+        updatedAt: null,
+        config: () => owned,
+      },
+      {
+        name: "foreign-unrestricted",
+        status: "stopped",
+        createdAt: null,
+        updatedAt: null,
+        config: () => unrestricted,
+      },
+    ];
+    const records = collectDecodableRecordsFromHandles(handles);
+    expect(records).toHaveLength(1);
+    expect(records[0]?.name).toBe("owned");
+    expect(records[0]?.network.mode).toBe("default-deny");
+  });
+
+  it("list decoding surfaces undecodable managed sandboxes instead of hiding them", async () => {
+    const owned = JSON.parse(await readFile(fixturePath, "utf8")) as Record<string, unknown>;
+    const managedBroken = {
+      ...owned,
+      name: "managed-broken",
+      network: { enabled: true, ports: [] },
+      // Keep sbox managed marker so the skip path must not swallow this.
+    };
+    const foreignBroken = {
+      ...owned,
+      name: "foreign-broken",
+      network: { enabled: true, ports: [] },
+      labels: { "other/managed": "true" },
+    };
+    expect(() =>
+      collectDecodableRecordsFromHandles([
+        {
+          name: "foreign-broken",
+          status: "stopped",
+          createdAt: null,
+          updatedAt: null,
+          config: () => foreignBroken,
+        },
+        {
+          name: "managed-broken",
+          status: "stopped",
+          createdAt: null,
+          updatedAt: null,
+          config: () => managedBroken,
+        },
+      ]),
+    ).toThrow(/Managed sandbox managed-broken/);
   });
 });
 
@@ -63,6 +143,12 @@ describe("immutable creation projection", () => {
       maxDurationSecs: null,
       idleTimeoutSecs: null,
       env: {},
+      network: {
+        mode: "default-deny",
+        allow: [],
+        publish: [],
+      },
+      secrets: [],
     });
   });
 
@@ -129,6 +215,8 @@ describe("immutable creation projection", () => {
           maxDurationSecs: null,
           idleTimeoutSecs: null,
           env: { A: "1", PATH: "/usr/bin" },
+          network: defaultNetworkConfig(),
+          secrets: [],
         },
         requested,
       ),
@@ -146,6 +234,8 @@ describe("immutable creation projection", () => {
           maxDurationSecs: null,
           idleTimeoutSecs: null,
           env: { A: "1", EXTRA: "nope" },
+          network: defaultNetworkConfig(),
+          secrets: [],
         },
         requested,
       ),
@@ -163,6 +253,8 @@ describe("immutable creation projection", () => {
           maxDurationSecs: null,
           idleTimeoutSecs: null,
           env: { A: "1" },
+          network: defaultNetworkConfig(),
+          secrets: [],
         },
         requested,
       ),

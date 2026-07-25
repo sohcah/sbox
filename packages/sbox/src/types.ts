@@ -13,6 +13,12 @@ import type {
   SandboxIdentity,
 } from "./identity.js";
 import type { LabelMap } from "./ownership.js";
+import type {
+  HostNetworkConfig,
+  ResolvedRuntimeSecret,
+  SafeNetworkConfig,
+  SafeRuntimeSecret,
+} from "./network/types.js";
 
 export type KnownSandboxLifecycleState = "running" | "stopped" | "crashed" | "draining";
 
@@ -44,6 +50,13 @@ export interface HostCreateRequest {
   readonly maxDurationSecs?: number | null;
   /** Native idle timeout in seconds. Null/omit means unset. */
   readonly idleTimeoutSecs?: number | null;
+  /**
+   * Curated network. Omit for default-deny with DNS/loopback only.
+   * Secret destinations never imply network allow rules.
+   */
+  readonly network?: HostNetworkConfig;
+  /** Resolved runtime secrets (values present only on the create path). */
+  readonly secrets?: readonly ResolvedRuntimeSecret[];
 }
 
 export interface HostListOptions extends OperationOptions {
@@ -53,6 +66,8 @@ export interface HostListOptions extends OperationOptions {
 
 export interface HostCapabilities {
   readonly localMicrosandbox: boolean;
+  /** When true, published ports may omit host / use host 0 for dynamic allocation. */
+  readonly dynamicHostPorts: boolean;
   readonly notes: readonly string[];
 }
 
@@ -68,6 +83,10 @@ export interface SandboxCreationSettings {
   readonly maxDurationSecs?: number;
   /** Native idle timeout in seconds when set. */
   readonly idleTimeoutSecs?: number;
+  /** Safe network projection (no secret values). */
+  readonly network: SafeNetworkConfig;
+  /** Safe runtime-secret metadata (no values). */
+  readonly secrets: readonly SafeRuntimeSecret[];
 }
 
 export interface SandboxInspection {

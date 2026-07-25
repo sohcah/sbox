@@ -19,7 +19,9 @@ import type {
   NativeRuntime,
   NativeSandboxRecord,
 } from "./native-runtime.js";
-import { decodeSandboxConfig } from "./sandbox-config.js";
+import { decodeSandboxConfig, peekSandboxConfigLabels } from "./sandbox-config.js";
+import { MANAGED_LABEL_VALUE, OWNERSHIP_LABEL_KEYS } from "./ownership.js";
+import { applyNetworkToBuilder } from "./network/compile.js";
 
 export function createMicrosandboxRuntime(): NativeRuntime {
   return new MicrosandboxRuntime();
@@ -58,6 +60,10 @@ class MicrosandboxRuntime implements NativeRuntime {
         builder = builder.envs({ ...request.env });
       }
 
+      builder = builder.network((network) =>
+        applyNetworkToBuilder(network, request.network, request.secrets),
+      );
+
       const sandbox = await builder.create();
       return wrapLive(sandbox);
     } catch (error) {
@@ -77,7 +83,7 @@ class MicrosandboxRuntime implements NativeRuntime {
   async list(): Promise<readonly NativeSandboxRecord[]> {
     try {
       const handles = await Sandbox.list();
-      return handles.map(recordFromHandle);
+      return collectDecodableRecordsFromHandles(handles);
     } catch (error) {
       throw mapNativeError(error);
     }
@@ -187,9 +193,56 @@ export function recordFromHandle(handle: {
     maxDurationSecs: decoded.maxDurationSecs,
     idleTimeoutSecs: decoded.idleTimeoutSecs,
     env: decoded.env,
+    network: decoded.network,
+    secrets: decoded.secrets,
     ...(handle.createdAt !== null ? { createdAt: handle.createdAt.toISOString() } : {}),
     ...(handle.updatedAt !== null ? { updatedAt: handle.updatedAt.toISOString() } : {}),
   };
+}
+
+/**
+ * Decode native handles for listing.
+ *
+ * Undecodable *foreign* sandboxes are skipped so they cannot abort the list.
+ * Undecodable *managed* sandboxes (ownership marker present) are surfaced —
+ * hiding them would make a corrupted sbox resource vanish from `list` with no
+ * signal. Labels are peeked independently of full config decode.
+ */
+export function collectDecodableRecordsFromHandles(
+  handles: readonly {
+    readonly name: string;
+    readonly status: string;
+    readonly createdAt: Date | null;
+    readonly updatedAt: Date | null;
+    config(): unknown;
+  }[],
+): readonly NativeSandboxRecord[] {
+  const records: NativeSandboxRecord[] = [];
+  for (const handle of handles) {
+    try {
+      records.push(recordFromHandle(handle));
+    } catch (error) {
+      let config: unknown;
+      try {
+        config = handle.config();
+      } catch {
+        // Cannot even read config; treat as foreign noise.
+        continue;
+      }
+      const labels = peekSandboxConfigLabels(config);
+      if (labels?.[OWNERSHIP_LABEL_KEYS.managed] === MANAGED_LABEL_VALUE) {
+        throw SboxError.internal(
+          `Managed sandbox ${handle.name} has an undecodable native configuration and cannot be listed.`,
+          {
+            cause: error,
+            details: { nativeName: handle.name },
+          },
+        );
+      }
+      // Foreign / unmanaged undecodable entry — skip.
+    }
+  }
+  return records;
 }
 
 /**

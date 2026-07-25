@@ -13,6 +13,23 @@ import type {
   SafeRuntimeSecret,
 } from "./network/types.js";
 
+export interface NativeDiskMount {
+  readonly guestPath: string;
+  readonly hostPath: string;
+  /** `qcow2` or `raw`. */
+  readonly format: "qcow2" | "raw";
+  /** Filesystem type for a virtio-blk disk mount (ordinary volumes use ext4). */
+  readonly fstype: "ext4" | null;
+}
+
+/** Host directory bind (formatter staging only — not a product mount surface). */
+export interface NativeBindMount {
+  readonly guestPath: string;
+  readonly hostPath: string;
+  /** Guest-write quota in MiB; required by Microsandbox bind mounts. */
+  readonly quotaMiB: number;
+}
+
 export interface NativeSandboxRecord {
   readonly name: string;
   readonly status: string;
@@ -30,6 +47,7 @@ export interface NativeSandboxRecord {
   readonly env: Readonly<Record<string, string>>;
   readonly network: HostNetworkConfig;
   readonly secrets: readonly SafeRuntimeSecret[];
+  readonly mounts: readonly NativeDiskMount[];
   readonly createdAt?: string;
   readonly updatedAt?: string;
 }
@@ -51,6 +69,13 @@ export interface NativeCreateRequest {
   readonly secrets: readonly ResolvedRuntimeSecret[];
   /** When true, create as native detached / non-ephemeral. */
   readonly detached: boolean;
+  /** Managed disk mounts (child overlays or maintenance base). */
+  readonly mounts?: readonly NativeDiskMount[];
+  /**
+   * Internal bind mounts (formatter staging directory). Not decoded from
+   * persisted ordinary sandboxes and not exposed on profiles.
+   */
+  readonly bindMounts?: readonly NativeBindMount[];
 }
 
 export interface NativeLiveHandle {

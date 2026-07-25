@@ -32,6 +32,7 @@ import type { HostEnsureImageRequest } from "../image/types.js";
 import { hostDockerPlatform } from "../image/platform.js";
 import { normalizePosixRelative } from "../image/context.js";
 import { throwAccumulatedValidation } from "../config/validate.js";
+import { parseBinarySizeToBytes } from "../config/scalars.js";
 import {
   mergeNetworkConfigs,
   normalizeAllowRule,
@@ -50,6 +51,7 @@ import {
   validateHostNetworkConfig,
   validateResolvedRuntimeSecrets,
 } from "../network/validate.js";
+import type { HostVolumeAttachment } from "../volume/types.js";
 
 export interface ResolveCreateInput {
   readonly project: ProjectConfig;
@@ -126,6 +128,7 @@ export async function resolveCreateIntent(
   }
 
   const image = resolveProfileImage(selected.profile, selected.name, input.resolvedImage);
+  const volumes = resolveProfileVolumes(input.project, selected.profile, selected.name);
   const request = profileToCreateRequest(
     identity,
     selected.profile,
@@ -133,9 +136,56 @@ export async function resolveCreateIntent(
     image,
     network,
     secretsResult.values,
+    volumes,
   );
   const projected = projectCreateRequest(request);
   return { identity, request, projected };
+}
+
+function resolveProfileVolumes(
+  project: ProjectConfig,
+  profile: ProfileConfig,
+  profileName: string,
+): readonly HostVolumeAttachment[] {
+  const attachments = profile.volumes ?? [];
+  if (attachments.length === 0) {
+    return [];
+  }
+  const declared = project.volumes ?? {};
+  const out: HostVolumeAttachment[] = [];
+  const issues: ConfigurationIssue[] = [];
+  for (let i = 0; i < attachments.length; i += 1) {
+    const attachment = attachments[i]!;
+    const path = `profiles.${profileName}.volumes.${i}`;
+    const declaration = declared[attachment.volume];
+    if (declaration === undefined) {
+      issues.push({
+        path: `${path}.volume`,
+        message: `Volume "${attachment.volume}" is not declared in project volumes.`,
+      });
+      continue;
+    }
+    try {
+      out.push({
+        volume: attachment.volume,
+        path: attachment.path,
+        sizeBytes: parseBinarySizeToBytes(declaration.size, `volumes.${attachment.volume}.size`),
+      });
+    } catch (error) {
+      if (error instanceof SboxError && error.code === "validation") {
+        issues.push({
+          path: `volumes.${attachment.volume}.size`,
+          message: error.message,
+        });
+      } else {
+        throw error;
+      }
+    }
+  }
+  if (issues.length > 0) {
+    throwAccumulatedValidation(issues, "Sandbox volume validation failed.");
+  }
+  return Object.freeze(out);
 }
 
 function mergeProfileNetwork(
@@ -224,6 +274,7 @@ export function profileToCreateRequest(
   image: string,
   network: HostNetworkConfig,
   secrets: readonly ResolvedRuntimeSecret[],
+  volumes: readonly HostVolumeAttachment[],
 ): HostCreateRequest {
   return {
     identity,
@@ -239,6 +290,7 @@ export function profileToCreateRequest(
     ...(Object.keys(env).length > 0 ? { env } : {}),
     network,
     ...(secrets.length > 0 ? { secrets } : {}),
+    ...(volumes.length > 0 ? { volumes } : {}),
   };
 }
 
@@ -411,6 +463,7 @@ export function reportCreationDrift(
       destinations: secret.destinations,
       value: "",
     })),
+    volumes: inspection.creation.volumes,
   });
 
   const expectedVisible: SandboxImmutableCreation = Object.freeze({

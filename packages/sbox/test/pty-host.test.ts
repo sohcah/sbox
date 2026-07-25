@@ -27,6 +27,7 @@ function seedRunning(host: FakeHost): SandboxIdentity {
       memoryMiB: 512,
       network: toSafeNetworkConfig(defaultNetworkConfig()),
       secrets: [],
+      volumes: [],
     },
   });
   return id;

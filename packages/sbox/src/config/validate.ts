@@ -125,6 +125,7 @@ type YamlProfileInput = {
     readonly placeholder?: string;
     readonly destinations: readonly string[];
   }[];
+  readonly volumes?: readonly { readonly volume: string; readonly path: string }[];
 };
 
 /** Normalize YAML input into the typed project model. */
@@ -184,6 +185,14 @@ function normalizeYamlProjectInput(input: {
       ...(idleTimeoutSecs !== undefined ? { idleTimeoutSecs } : {}),
       ...(network !== undefined ? { network } : {}),
       ...(secrets !== undefined ? { secrets } : {}),
+      ...(profile.volumes !== undefined
+        ? {
+            volumes: profile.volumes.map((attachment) => ({
+              volume: attachment.volume,
+              path: attachment.path,
+            })),
+          }
+        : {}),
     };
 
     if (profile.build !== undefined) {
@@ -304,6 +313,13 @@ export function toSafeProjectConfig(config: ProjectConfig): SafeProjectConfig {
                 placeholder: secret.placeholder ?? defaultPlaceholder(secret.env),
                 destinations: secret.destinations,
               }),
+            ),
+          }
+        : {}),
+      ...(profile.volumes !== undefined
+        ? {
+            volumes: profile.volumes.map((attachment) =>
+              Object.freeze({ volume: attachment.volume, path: attachment.path }),
             ),
           }
         : {}),
@@ -504,6 +520,15 @@ function freezeProjectConfig(config: {
         : {}),
       ...(profile.secrets !== undefined
         ? { secrets: normalizeRuntimeSecrets(profile.secrets) }
+        : {}),
+      ...(profile.volumes !== undefined
+        ? {
+            volumes: Object.freeze(
+              profile.volumes.map((attachment) =>
+                Object.freeze({ volume: attachment.volume, path: attachment.path }),
+              ),
+            ),
+          }
         : {}),
     }) as ProfileConfig;
   }

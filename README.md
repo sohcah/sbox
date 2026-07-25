@@ -16,7 +16,17 @@ does not maintain a second sandbox database or orchestration state machine.
 
 ## Status
 
-Phase 5 is implemented for curated networking and runtime secrets: profile
+Phase 6 is implemented for managed QCOW2/ext4 volumes: project volume
+declarations, profile attachments, host-local bases under
+`~/.sbox/volumes` (override with `SBOX_VOLUME_DATA_ROOT`), disposable child
+overlays on ordinary create, exclusive `volume shell` maintenance mounting the
+base directly, and CLI `volume list` / `volume shell` / `volume remove`. Bases
+are formatted via a pinned formatter image that already contains `mkfs.ext4`
+(default `sbox-volume-formatter:1` from `packages/sbox/formatter/Dockerfile`,
+override with `SBOX_VOLUME_FORMATTER_IMAGE`) plus host `qemu-img` (required
+only when volumes are used).
+
+Phase 5 remains in place for curated networking and runtime secrets: profile
 `network.mode` (`disabled` | `default-deny`), outbound allow rules (domain /
 suffix / IP / CIDR with TCP/UDP ports), published ports (loopback bind by
 default; dynamic host ports are capability-gated and currently off on
@@ -29,7 +39,7 @@ Phase 4 remains in place for Dockerfile-backed profiles: content-addressed
 identity, Docker build → ownership stamp → export → `msb image load`,
 in-process coalescing, and CLI `build` / `image list` / `image remove`.
 
-Later phases add QCOW2 volumes, remote transport, and the Sandcastle adapter.
+Later phases add remote transport and the Sandcastle adapter.
 
 ## Development
 
@@ -41,27 +51,30 @@ pnpm test:acceptance       # optional real Microsandbox (needs runtime)
                            # unavailable is reported as a skipped Vitest test, not a pass
 ```
 
-## Quick start (Phase 5)
+## Quick start (Phase 6)
 
 ```bash
 sbox init --project demo
-# Edit sbox.yaml — networking example:
-#   network:
-#     mode: default-deny
-#     allow:
-#       - domain: example.com
-#     publish:
-#       - guest: 8080
-#         host: 18080          # required on 0.6.6; bind defaults to 127.0.0.1
-#   secrets:
-#     - env: API_TOKEN
-#       value: { env: API_TOKEN }
-#       destinations: [api.example.com]
+# Edit sbox.yaml — volumes + networking example:
+# volumes:
+#   cache:
+#     size: 4GiB
+# profiles:
+#   default:
+#     image: alpine:3.20
+#     volumes:
+#       - volume: cache
+#         path: /cache
+#     network:
+#       mode: default-deny
+#       allow:
+#         - domain: example.com
 sbox config validate
 sbox up default
-sbox exec default -- printf '%s' hello
-sbox stop default
-sbox remove default
+sbox volume list
+sbox volume shell default cache   # exclusive base maintenance
+sbox stop default && sbox remove default
+sbox volume remove cache
 ```
 
 Programmatic equivalent:

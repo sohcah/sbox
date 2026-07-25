@@ -42,6 +42,11 @@ const volumeDeclarationSchema = z.strictObject({
   size: binarySizeSchema,
 });
 
+const volumeAttachmentSchema = z.strictObject({
+  volume: portableSlugSchema,
+  path: absoluteGuestPathSchema,
+});
+
 const buildkitSecretIdSchema = z
   .string()
   .min(1)
@@ -193,6 +198,7 @@ const profileCommonFields = {
   idleTimeoutSecs: z.number().int().positive().nullable().optional(),
   network: networkConfigSchema.optional(),
   secrets: z.array(runtimeSecretConfigSchema).optional(),
+  volumes: z.array(volumeAttachmentSchema).optional(),
 } as const;
 
 function refineImageOrBuild(
@@ -263,6 +269,7 @@ export const projectConfigSchema = z
         message: `defaultProfile "${value.defaultProfile}" does not exist in profiles.`,
       });
     }
+    refineProfileVolumeAttachments(value, ctx);
   });
 
 const localTargetSchema = z.strictObject({
@@ -317,6 +324,7 @@ export const yamlProfileInputSchema = z
     idleTimeout: durationSchema.nullable().optional(),
     network: networkConfigSchema.optional(),
     secrets: z.array(runtimeSecretConfigSchema).optional(),
+    volumes: z.array(volumeAttachmentSchema).optional(),
   })
   .superRefine((value, ctx) => {
     refineImageOrBuild(value, ctx);
@@ -343,6 +351,7 @@ export const yamlProjectInputSchema = z
         message: `defaultProfile "${value.defaultProfile}" does not exist in profiles.`,
       });
     }
+    refineProfileVolumeAttachments(value, ctx);
     for (const [name, profile] of Object.entries(value.profiles)) {
       if (profile.memory !== undefined && profile.memoryMiB !== undefined) {
         ctx.addIssue({
@@ -371,3 +380,57 @@ export const yamlProjectInputSchema = z
 export type YamlProjectInput = z.infer<typeof yamlProjectInputSchema>;
 export type ParsedProjectConfig = ProjectConfig;
 export type ParsedUserConfig = UserConfig;
+
+function refineProfileVolumeAttachments(
+  value: {
+    readonly volumes?: Readonly<Record<string, { readonly size: string }>> | undefined;
+    readonly profiles: Readonly<
+      Record<
+        string,
+        {
+          readonly volumes?:
+            | readonly { readonly volume: string; readonly path: string }[]
+            | undefined;
+        }
+      >
+    >;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  const declared = value.volumes ?? {};
+  for (const [profileName, profile] of Object.entries(value.profiles)) {
+    const attachments = profile.volumes;
+    if (attachments === undefined || attachments.length === 0) {
+      continue;
+    }
+    const seenVolumes = new Set<string>();
+    const seenPaths = new Set<string>();
+    for (let i = 0; i < attachments.length; i += 1) {
+      const attachment = attachments[i]!;
+      const pathPrefix = ["profiles", profileName, "volumes", i] as const;
+      if (!(attachment.volume in declared)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [...pathPrefix, "volume"],
+          message: `Volume "${attachment.volume}" is not declared in project volumes.`,
+        });
+      }
+      if (seenVolumes.has(attachment.volume)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [...pathPrefix, "volume"],
+          message: `Volume "${attachment.volume}" is attached more than once in this profile.`,
+        });
+      }
+      seenVolumes.add(attachment.volume);
+      if (seenPaths.has(attachment.path)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [...pathPrefix, "path"],
+          message: `Guest path "${attachment.path}" is used by more than one volume attachment.`,
+        });
+      }
+      seenPaths.add(attachment.path);
+    }
+  }
+}

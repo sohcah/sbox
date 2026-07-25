@@ -8,6 +8,8 @@
 import { SboxError, isSboxError, throwIfAborted, wrapUnknownFailure } from "./errors.js";
 import type { Host } from "./host.js";
 import {
+  assertProjectId,
+  assertProfileId,
   assertSandboxIdentity,
   nativeSandboxName,
   type NativeSandboxName,
@@ -39,7 +41,12 @@ import type {
 import { listStaleImageWorkspaces } from "./image/workspace.js";
 import { createRedactingLogger, safeLog, silentLogger, type Logger } from "./logging.js";
 import { createMicrosandboxRuntime } from "./microsandbox-runtime.js";
-import type { NativeLiveHandle, NativeRuntime, NativeSandboxRecord } from "./native-runtime.js";
+import type {
+  NativeDiskMount,
+  NativeLiveHandle,
+  NativeRuntime,
+  NativeSandboxRecord,
+} from "./native-runtime.js";
 import { mapNativeStatus } from "./native-runtime.js";
 import { buildOwnershipLabels, matchOwnedCreation } from "./ownership-adoption.js";
 import { inspectOwnershipLabels, type LabelMap } from "./ownership.js";
@@ -82,11 +89,48 @@ import {
   validateHostNetworkConfig,
   validateResolvedRuntimeSecrets,
 } from "./network/validate.js";
+import {
+  acquireVolumeLock,
+  assertNoOrdinaryDescendants,
+  buildMaintenanceOwnershipLabels,
+  countOrdinaryDescendants,
+  defaultVolumeDataRoot,
+  ensureChildOverlay,
+  ensureVolumeBase,
+  ensureVolumeBaseLocked,
+  isManagedChildOverlayPath,
+  listVolumeDescendants,
+  maintenanceIdentity,
+  maintenanceNativeName,
+  projectVolumeRoot,
+  recoverCrashedMaintenance,
+  removeChildOverlay,
+  requireQemuImg,
+  volumeAttachmentsFromMounts,
+  volumePaths,
+  withVolumeLock,
+  qemuImgInfo,
+  type QemuImgInfo,
+  type QemuImgPorts,
+  type VolumeLockHandle,
+} from "./volume/index.js";
+import type {
+  HostEnsureVolumeRequest,
+  HostListVolumesRequest,
+  HostRemoveVolumeRequest,
+  HostVolumeInspection,
+  HostVolumeShellRequest,
+  HostVolumeSummary,
+} from "./volume/types.js";
+import { access, readdir, rm } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 
 /** Internal testing seam. Not exported from the package root. */
 export interface LocalHostInternalOptions {
   readonly logger?: Logger;
   readonly runtime?: NativeRuntime;
+  readonly volumeDataRoot?: string;
+  readonly qemuImg?: import("./volume/qemu-img.js").QemuImgPorts;
 }
 
 /** @internal Used by unit tests to inject a fake native runtime. */
@@ -97,12 +141,16 @@ export function createLocalHostInternal(options: LocalHostInternalOptions = {}):
 class LocalHost implements Host {
   private readonly logger: Logger;
   private readonly runtime: NativeRuntime;
+  private readonly volumeDataRoot: string;
+  private readonly qemuImg: QemuImgPorts | undefined;
   private readonly liveByName = new Map<string, NativeLiveHandle>();
   private disposed = false;
 
   constructor(options: LocalHostInternalOptions) {
     this.logger = createRedactingLogger(options.logger ?? silentLogger);
     this.runtime = options.runtime ?? createMicrosandboxRuntime();
+    this.volumeDataRoot = options.volumeDataRoot ?? defaultVolumeDataRoot();
+    this.qemuImg = options.qemuImg;
   }
 
   async create(request: HostCreateRequest, options?: OperationOptions): Promise<SandboxInspection> {
@@ -118,6 +166,7 @@ class LocalHost implements Host {
         throw this.conflictOrAlreadyExists(identity, nativeName, preexisting, projected);
       }
 
+      const volumePrep = await this.prepareCreateVolumes(identity, request, options?.signal);
       let published = false;
       try {
         const live = await this.runtime.create({
@@ -136,20 +185,56 @@ class LocalHost implements Host {
           env: projected.env,
           network: projected.network,
           secrets: request.secrets ?? [],
+          ...(volumePrep.mounts.length > 0 ? { mounts: volumePrep.mounts } : {}),
         });
         published = true;
         this.liveByName.set(nativeName, live);
       } catch (error) {
         const mapped = wrapUnknownFailure(error, "Sandbox create failed.");
-        if (isDefinitiveCreateFailure(mapped)) {
-          const leftover = await this.tryGet(nativeName);
-          if (leftover !== undefined) {
-            throw this.conflictOrAlreadyExists(identity, nativeName, leftover, projected);
+        try {
+          if (isDefinitiveCreateFailure(mapped)) {
+            const leftover = await this.tryGet(nativeName);
+            if (leftover !== undefined) {
+              const conflict = this.conflictOrAlreadyExists(
+                identity,
+                nativeName,
+                leftover,
+                projected,
+              );
+              // Owned already-exists keeps overlays; foreign conflict orphans ours.
+              if (conflict.code === "ownership_conflict") {
+                await volumePrep.rollback();
+              }
+              throw conflict;
+            }
+            await volumePrep.rollback();
+            throw mapped;
           }
-          throw mapped;
+          try {
+            return await this.reinspectUncertainCreate(identity, nativeName, projected, mapped);
+          } catch (reinspectError) {
+            const leftover = await this.tryGet(nativeName);
+            if (leftover === undefined) {
+              await volumePrep.rollback();
+            } else {
+              const ownership = matchOwnedCreation(
+                this.creationEvidence(identity, leftover),
+                identity,
+                projected,
+              );
+              if (!ownership.ok) {
+                await volumePrep.rollback();
+              }
+            }
+            throw reinspectError;
+          }
+        } finally {
+          await volumePrep.releaseLocks();
         }
-        return await this.reinspectUncertainCreate(identity, nativeName, projected, mapped);
       }
+
+      // Success path: release volume locks after native create published.
+      await volumePrep.releaseLocks();
 
       try {
         await this.consumeLive(nativeName);
@@ -295,6 +380,7 @@ class LocalHost implements Host {
       }
       await this.runtime.remove(nativeName);
       this.liveByName.delete(nativeName);
+      await this.cleanupManagedOverlays(identity, current.mounts);
     });
   }
 
@@ -306,11 +392,282 @@ class LocalHost implements Host {
         // Microsandbox 0.6.6 accepts host port 0 but does not expose the allocated
         // port via inspectable sandbox config, so dynamic publication is gated off.
         dynamicHostPorts: false,
+        // qemu-img is probed only when volume operations run (requireQemuImg).
+        qemuImg: false,
         notes: [
           ...probe.notes,
           "Dynamic host ports are not advertised: allocated ports are not inspectable on Microsandbox 0.6.6.",
+          "Host qemu-img availability is checked when managed volumes are used.",
         ],
       };
+    });
+  }
+
+  async listVolumes(
+    request: HostListVolumesRequest,
+    options?: OperationOptions,
+  ): Promise<readonly HostVolumeSummary[]> {
+    return this.withOperation("listVolumes", undefined, options, async () => {
+      const project = assertProjectId(request.project);
+      const projectRoot = projectVolumeRoot(project, this.volumeDataRoot);
+      let volumeNames: string[] = [];
+      try {
+        const entries = await readdir(projectRoot, { withFileTypes: true });
+        volumeNames = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+      } catch {
+        return [];
+      }
+      const records = await this.runtime.list();
+      const summaries: HostVolumeSummary[] = [];
+      for (const volume of volumeNames.toSorted()) {
+        const paths = volumePaths(project, volume, this.volumeDataRoot);
+        if (!(await pathExists(paths.basePath))) {
+          continue;
+        }
+        const info = await this.safeBaseInfo(paths.basePath, options?.signal);
+        if (info === undefined) {
+          continue;
+        }
+        const descendants = await listVolumeDescendants({
+          project,
+          volume,
+          sizeBytes: info.virtualSize,
+          records,
+          dataRoot: this.volumeDataRoot,
+          ...(this.qemuImg !== undefined ? { qemuImg: this.qemuImg } : {}),
+          ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+          validateChildren: false,
+        });
+        summaries.push({
+          project,
+          volume,
+          basePath: paths.basePath,
+          sizeBytes: info.virtualSize,
+          descendantCount: countOrdinaryDescendants(descendants),
+        });
+      }
+      return summaries;
+    });
+  }
+
+  async ensureVolume(
+    request: HostEnsureVolumeRequest,
+    options?: OperationOptions,
+  ): Promise<HostVolumeInspection> {
+    return this.withOperation("ensureVolume", undefined, options, async () => {
+      const project = assertProjectId(request.project);
+      const ports = this.formatPorts(options?.signal);
+      const ensured = await ensureVolumeBase(
+        {
+          project,
+          volume: request.volume,
+          sizeBytes: request.sizeBytes,
+          dataRoot: this.volumeDataRoot,
+          ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+        },
+        {
+          ...ports,
+          beforeEnsure: async () => {
+            await recoverCrashedMaintenance({
+              runtime: this.runtime,
+              project,
+              volume: request.volume,
+              expectedNativeName: maintenanceNativeName(project, request.volume),
+            });
+          },
+        },
+      );
+      const records = await this.runtime.list();
+      const descendants = await listVolumeDescendants({
+        project,
+        volume: request.volume,
+        sizeBytes: request.sizeBytes,
+        records,
+        dataRoot: this.volumeDataRoot,
+        ...(this.qemuImg !== undefined ? { qemuImg: this.qemuImg } : {}),
+        ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+        validateChildren: false,
+      });
+      return {
+        project,
+        volume: request.volume,
+        basePath: ensured.basePath,
+        sizeBytes: request.sizeBytes,
+        format: "qcow2",
+        descendantCount: countOrdinaryDescendants(descendants),
+      };
+    });
+  }
+
+  async removeVolume(request: HostRemoveVolumeRequest, options?: OperationOptions): Promise<void> {
+    await this.withOperation("removeVolume", undefined, options, async () => {
+      const project = assertProjectId(request.project);
+      const paths = volumePaths(project, request.volume, this.volumeDataRoot);
+      if (!(await pathExists(paths.basePath))) {
+        throw SboxError.notFound(`Volume ${project}/${request.volume} was not found.`, {
+          details: { project, volume: request.volume, basePath: paths.basePath },
+        });
+      }
+      await requireQemuImg(this.qemuImg, options?.signal);
+      await withVolumeLock(
+        paths.lockSocketPath,
+        async () => {
+          await recoverCrashedMaintenance({
+            runtime: this.runtime,
+            project,
+            volume: request.volume,
+            expectedNativeName: maintenanceNativeName(project, request.volume),
+          });
+          const info = await this.safeBaseInfo(paths.basePath, options?.signal);
+          if (info === undefined) {
+            throw SboxError.ownershipConflict("Managed volume base is not a valid qcow2 image.", {
+              details: { basePath: paths.basePath },
+            });
+          }
+          const records = await this.runtime.list();
+          const descendants = await listVolumeDescendants({
+            project,
+            volume: request.volume,
+            sizeBytes: info.virtualSize,
+            records,
+            dataRoot: this.volumeDataRoot,
+            ...(this.qemuImg !== undefined ? { qemuImg: this.qemuImg } : {}),
+            ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+            validateChildren: false,
+          });
+          assertNoOrdinaryDescendants(request.volume, descendants);
+          await rm(paths.basePath, { force: true });
+          await rm(paths.childrenRoot, { recursive: true, force: true }).catch(() => undefined);
+        },
+        options?.signal !== undefined ? { signal: options.signal } : {},
+      );
+    });
+  }
+
+  async volumeShell(
+    request: HostVolumeShellRequest,
+    options?: OperationOptions,
+  ): Promise<SandboxInspection> {
+    const identity = maintenanceIdentity(
+      assertProjectId(request.project),
+      assertProfileId(request.profile),
+      request.volume,
+    );
+    return this.withOperation("volumeShell", identity, options, async () => {
+      this.validateCreateRequest({
+        identity,
+        image: request.image,
+        ...(request.cpus !== undefined ? { cpus: request.cpus } : {}),
+        ...(request.memoryMiB !== undefined ? { memoryMiB: request.memoryMiB } : {}),
+        ...(request.workdir !== undefined ? { workdir: request.workdir } : {}),
+        ...(request.user !== undefined ? { user: request.user } : {}),
+        ...(request.shell !== undefined ? { shell: request.shell } : {}),
+        ...(request.hostname !== undefined ? { hostname: request.hostname } : {}),
+        ...(request.env !== undefined ? { env: request.env } : {}),
+        ...(request.maxDurationSecs !== undefined
+          ? { maxDurationSecs: request.maxDurationSecs }
+          : {}),
+        ...(request.idleTimeoutSecs !== undefined
+          ? { idleTimeoutSecs: request.idleTimeoutSecs }
+          : {}),
+        volumes: [{ volume: request.volume, path: request.path, sizeBytes: request.sizeBytes }],
+      });
+
+      const projected = projectCreateRequest({
+        image: request.image,
+        ...(request.cpus !== undefined ? { cpus: request.cpus } : {}),
+        ...(request.memoryMiB !== undefined ? { memoryMiB: request.memoryMiB } : {}),
+        ...(request.workdir !== undefined ? { workdir: request.workdir } : {}),
+        ...(request.user !== undefined ? { user: request.user } : {}),
+        ...(request.shell !== undefined ? { shell: request.shell } : {}),
+        ...(request.hostname !== undefined ? { hostname: request.hostname } : {}),
+        ...(request.env !== undefined ? { env: request.env } : {}),
+        ...(request.maxDurationSecs !== undefined
+          ? { maxDurationSecs: request.maxDurationSecs }
+          : {}),
+        ...(request.idleTimeoutSecs !== undefined
+          ? { idleTimeoutSecs: request.idleTimeoutSecs }
+          : {}),
+        volumes: [{ volume: request.volume, path: request.path, sizeBytes: request.sizeBytes }],
+      });
+      const labels = buildMaintenanceOwnershipLabels(identity, projected, request.volume);
+      const nativeName = nativeSandboxName(identity.project, identity.instance);
+      const paths = volumePaths(identity.project, request.volume, this.volumeDataRoot);
+      const ports = this.formatPorts(options?.signal);
+
+      await withVolumeLock(
+        paths.lockSocketPath,
+        async () => {
+          await recoverCrashedMaintenance({
+            runtime: this.runtime,
+            project: identity.project,
+            volume: request.volume,
+            expectedNativeName: nativeName,
+          });
+          await ensureVolumeBaseLocked(
+            {
+              project: identity.project,
+              volume: request.volume,
+              sizeBytes: request.sizeBytes,
+              dataRoot: this.volumeDataRoot,
+              ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+            },
+            ports,
+            paths,
+          );
+          const records = await this.runtime.list();
+          const descendants = await listVolumeDescendants({
+            project: identity.project,
+            volume: request.volume,
+            sizeBytes: request.sizeBytes,
+            records,
+            dataRoot: this.volumeDataRoot,
+            ...(this.qemuImg !== undefined ? { qemuImg: this.qemuImg } : {}),
+            ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+            validateChildren: false,
+          });
+          assertNoOrdinaryDescendants(request.volume, descendants);
+
+          const preexisting = await this.tryGet(nativeName);
+          if (preexisting !== undefined) {
+            throw SboxError.busy(
+              "Volume maintenance sandbox identity is still present after recovery.",
+              { details: { nativeName } },
+            );
+          }
+
+          const live = await this.runtime.create({
+            name: nativeName,
+            image: projected.image,
+            labels,
+            detached: true,
+            cpus: projected.cpus,
+            memoryMiB: projected.memoryMiB,
+            workdir: projected.workdir,
+            user: projected.user,
+            shell: projected.shell,
+            hostname: projected.hostname,
+            maxDurationSecs: projected.maxDurationSecs,
+            idleTimeoutSecs: projected.idleTimeoutSecs,
+            env: projected.env,
+            network: projected.network,
+            secrets: [],
+            mounts: [
+              {
+                guestPath: request.path,
+                hostPath: paths.basePath,
+                format: "qcow2",
+                fstype: "ext4",
+              },
+            ],
+          });
+          this.liveByName.set(nativeName, live);
+          await this.consumeLive(nativeName);
+        },
+        options?.signal !== undefined ? { signal: options.signal } : {},
+      );
+
+      return this.inspectOwned(identity, nativeName as NativeSandboxName);
     });
   }
 
@@ -539,7 +896,11 @@ class LocalHost implements Host {
       throw wrapUnknownFailure(error, "Sandbox create failed.");
     }
 
-    const ownership = matchOwnedCreation(existing, identity, projected);
+    const ownership = matchOwnedCreation(
+      this.creationEvidence(identity, existing),
+      identity,
+      projected,
+    );
     if (!ownership.ok) {
       throw SboxError.ownershipConflict(
         `Native sandbox ${nativeName} exists but does not match sbox ownership or configuration.`,
@@ -574,7 +935,11 @@ class LocalHost implements Host {
     existing: NativeSandboxRecord,
     projected: ImmutableCreationProjection,
   ): SboxError {
-    const ownership = matchOwnedCreation(existing, identity, projected);
+    const ownership = matchOwnedCreation(
+      this.creationEvidence(identity, existing),
+      identity,
+      projected,
+    );
     if (ownership.ok) {
       return SboxError.alreadyExists(
         `Sandbox ${identity.project}/${identity.instance} already exists.`,
@@ -678,10 +1043,36 @@ class LocalHost implements Host {
       identity,
       nativeName: record.name as NativeSandboxName,
       state: mapNativeStatus(record.status),
-      creation: creationFromRecord(record),
+      creation: this.creationFromRecord(identity, record),
       labels: freezeLabels(record.labels),
       ...(record.createdAt !== undefined ? { createdAt: record.createdAt } : {}),
       ...(record.updatedAt !== undefined ? { updatedAt: record.updatedAt } : {}),
+    };
+  }
+
+  private creationFromRecord(
+    identity: SandboxIdentity,
+    record: NativeSandboxRecord,
+  ): SandboxCreationSettings {
+    return {
+      image: record.image,
+      cpus: record.cpus,
+      memoryMiB: record.memoryMiB,
+      ...(record.workdir !== null ? { workdir: record.workdir } : {}),
+      ...(record.user !== null ? { user: record.user } : {}),
+      ...(record.shell !== null ? { shell: record.shell } : {}),
+      ...(record.hostname !== null ? { hostname: record.hostname } : {}),
+      ...(record.maxDurationSecs !== null ? { maxDurationSecs: record.maxDurationSecs } : {}),
+      ...(record.idleTimeoutSecs !== null ? { idleTimeoutSecs: record.idleTimeoutSecs } : {}),
+      network: toSafeNetworkConfig(record.network),
+      secrets: [...record.secrets],
+      volumes: volumeAttachmentsFromMounts({
+        project: identity.project,
+        instance: identity.instance,
+        mounts: record.mounts,
+        labels: record.labels,
+        dataRoot: this.volumeDataRoot,
+      }),
     };
   }
 
@@ -805,22 +1196,194 @@ class LocalHost implements Host {
       throw SboxError.internal("LocalHost has been disposed.");
     }
   }
-}
 
-function creationFromRecord(record: NativeSandboxRecord): SandboxCreationSettings {
-  return {
-    image: record.image,
-    cpus: record.cpus,
-    memoryMiB: record.memoryMiB,
-    ...(record.workdir !== null ? { workdir: record.workdir } : {}),
-    ...(record.user !== null ? { user: record.user } : {}),
-    ...(record.shell !== null ? { shell: record.shell } : {}),
-    ...(record.hostname !== null ? { hostname: record.hostname } : {}),
-    ...(record.maxDurationSecs !== null ? { maxDurationSecs: record.maxDurationSecs } : {}),
-    ...(record.idleTimeoutSecs !== null ? { idleTimeoutSecs: record.idleTimeoutSecs } : {}),
-    network: toSafeNetworkConfig(record.network),
-    secrets: [...record.secrets],
-  };
+  private formatPorts(signal?: AbortSignal) {
+    return {
+      runtime: this.runtime,
+      ...(this.qemuImg !== undefined ? { qemuImg: this.qemuImg } : {}),
+      execInSandbox: async (request: {
+        readonly name: string;
+        readonly argv: readonly string[];
+        readonly signal?: AbortSignal;
+      }) => {
+        const result = await execArgvCollected(
+          request.name,
+          request.argv,
+          (request.signal ?? signal) !== undefined ? { signal: (request.signal ?? signal)! } : {},
+        );
+        return {
+          exitCode: result.exitCode,
+          stderr: Buffer.from(result.stderr).toString("utf8"),
+        };
+      },
+    };
+  }
+
+  private async safeBaseInfo(
+    basePath: string,
+    signal?: AbortSignal,
+  ): Promise<QemuImgInfo | undefined> {
+    try {
+      return await qemuImgInfo(basePath, this.qemuImg, signal);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async prepareCreateVolumes(
+    identity: SandboxIdentity,
+    request: HostCreateRequest,
+    signal?: AbortSignal,
+  ): Promise<{
+    readonly mounts: readonly NativeDiskMount[];
+    rollback(): Promise<void>;
+    releaseLocks(): Promise<void>;
+  }> {
+    const attachments = [...(request.volumes ?? [])].toSorted((a, b) =>
+      a.volume.localeCompare(b.volume),
+    );
+    if (attachments.length === 0) {
+      return {
+        mounts: [],
+        async rollback() {},
+        async releaseLocks() {},
+      };
+    }
+
+    await requireQemuImg(this.qemuImg, signal);
+    const locks: VolumeLockHandle[] = [];
+    const createdChildren: { volume: string }[] = [];
+    const mounts: NativeDiskMount[] = [];
+    const ports = this.formatPorts(signal);
+
+    try {
+      for (const attachment of attachments) {
+        const paths = volumePaths(identity.project, attachment.volume, this.volumeDataRoot);
+        const lock = await acquireVolumeLock(
+          paths.lockSocketPath,
+          signal !== undefined ? { signal } : {},
+        );
+        locks.push(lock);
+        await recoverCrashedMaintenance({
+          runtime: this.runtime,
+          project: identity.project,
+          volume: attachment.volume,
+          expectedNativeName: maintenanceNativeName(identity.project, attachment.volume),
+        });
+        await ensureVolumeBaseLocked(
+          {
+            project: identity.project,
+            volume: attachment.volume,
+            sizeBytes: attachment.sizeBytes,
+            dataRoot: this.volumeDataRoot,
+            ...(signal !== undefined ? { signal } : {}),
+          },
+          ports,
+          paths,
+        );
+        const childPath = await ensureChildOverlay({
+          project: identity.project,
+          volume: attachment.volume,
+          instance: identity.instance,
+          sizeBytes: attachment.sizeBytes,
+          dataRoot: this.volumeDataRoot,
+          ...(this.qemuImg !== undefined ? { qemuImg: this.qemuImg } : {}),
+          ...(signal !== undefined ? { signal } : {}),
+        });
+        createdChildren.push({ volume: attachment.volume });
+        mounts.push({
+          guestPath: attachment.path,
+          hostPath: childPath,
+          format: "qcow2",
+          fstype: "ext4",
+        });
+      }
+    } catch (error) {
+      for (const child of createdChildren.toReversed()) {
+        await removeChildOverlay(
+          identity.project,
+          child.volume,
+          identity.instance,
+          this.volumeDataRoot,
+        ).catch(() => undefined);
+      }
+      for (const lock of locks.toReversed()) {
+        await lock.release().catch(() => undefined);
+      }
+      throw error;
+    }
+
+    return {
+      mounts,
+      rollback: async () => {
+        for (const child of createdChildren.toReversed()) {
+          await removeChildOverlay(
+            identity.project,
+            child.volume,
+            identity.instance,
+            this.volumeDataRoot,
+          ).catch(() => undefined);
+        }
+      },
+      releaseLocks: async () => {
+        for (const lock of locks.toReversed()) {
+          await lock.release().catch(() => undefined);
+        }
+      },
+    };
+  }
+
+  private async cleanupManagedOverlays(
+    identity: SandboxIdentity,
+    mounts: readonly NativeDiskMount[],
+  ): Promise<void> {
+    // Never delete a managed base. Only exact deterministic child overlay paths.
+    const volumes = new Set<string>();
+    for (const mount of mounts) {
+      const host = mount.hostPath;
+      const slash = Math.max(host.lastIndexOf("/"), host.lastIndexOf("\\"));
+      const file = slash >= 0 ? host.slice(slash + 1) : host;
+      if (!file.endsWith(".qcow2")) {
+        continue;
+      }
+      const volume = file.slice(0, -".qcow2".length);
+      if (volume.length === 0) {
+        continue;
+      }
+      if (
+        isManagedChildOverlayPath(
+          host,
+          identity.project,
+          volume,
+          identity.instance,
+          this.volumeDataRoot,
+        )
+      ) {
+        volumes.add(volume);
+      }
+    }
+    for (const volume of volumes) {
+      await removeChildOverlay(
+        identity.project,
+        volume,
+        identity.instance,
+        this.volumeDataRoot,
+      ).catch(() => undefined);
+    }
+  }
+
+  private creationEvidence(identity: SandboxIdentity, record: NativeSandboxRecord) {
+    return {
+      ...record,
+      volumes: volumeAttachmentsFromMounts({
+        project: identity.project,
+        instance: identity.instance,
+        mounts: record.mounts,
+        labels: record.labels,
+        dataRoot: this.volumeDataRoot,
+      }),
+    };
+  }
 }
 
 function freezeLabels(labels: LabelMap): LabelMap {
@@ -834,4 +1397,13 @@ function isDefinitiveCreateFailure(error: SboxError): boolean {
     error.code === "capability" ||
     error.code === "ownership_conflict"
   );
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path, fsConstants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }

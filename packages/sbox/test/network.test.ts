@@ -225,6 +225,7 @@ describe("network decode and fingerprint round-trip", () => {
           idleTimeoutSecs: actual.idleTimeoutSecs,
           network: actual.network,
           secrets: actual.secrets,
+          volumes: actual.volumes,
         },
         expected,
       ),

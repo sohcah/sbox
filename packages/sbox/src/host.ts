@@ -1,7 +1,5 @@
 /**
- * Host deep seam: lifecycle, process/PTY/transfer, and generated images.
- *
- * Volume methods arrive in later phases on this same contract.
+ * Host deep seam: lifecycle, process/PTY/transfer, images, and managed volumes.
  */
 
 import type { SandboxIdentity } from "./identity.js";
@@ -32,6 +30,14 @@ import type {
   SandboxInspection,
   SandboxSummary,
 } from "./types.js";
+import type {
+  HostEnsureVolumeRequest,
+  HostListVolumesRequest,
+  HostRemoveVolumeRequest,
+  HostVolumeInspection,
+  HostVolumeShellRequest,
+  HostVolumeSummary,
+} from "./volume/types.js";
 
 export interface HostExecArgvRequest {
   readonly identity: SandboxIdentity;
@@ -75,6 +81,24 @@ export interface Host extends AsyncDisposable {
   listStaleImageWorkspaces(
     options?: HostListStaleImageWorkspacesOptions,
   ): Promise<readonly StaleImageWorkspace[]>;
+
+  listVolumes(
+    request: HostListVolumesRequest,
+    options?: OperationOptions,
+  ): Promise<readonly HostVolumeSummary[]>;
+  ensureVolume(
+    request: HostEnsureVolumeRequest,
+    options?: OperationOptions,
+  ): Promise<HostVolumeInspection>;
+  removeVolume(request: HostRemoveVolumeRequest, options?: OperationOptions): Promise<void>;
+  /**
+   * Exclusive maintenance sandbox mounting the base directly.
+   * Refuses while ordinary child descendants exist.
+   */
+  volumeShell(
+    request: HostVolumeShellRequest,
+    options?: OperationOptions,
+  ): Promise<SandboxInspection>;
 
   execArgv(
     request: HostExecArgvRequest,

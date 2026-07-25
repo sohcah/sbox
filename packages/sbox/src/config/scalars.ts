@@ -24,7 +24,7 @@ export function isAbsoluteGuestPath(value: string): boolean {
   return ABSOLUTE_GUEST_PATH.test(value) && !value.includes("//") && !value.endsWith("/");
 }
 
-export function parseBinarySizeToMiB(value: string, path: string): number {
+export function parseBinarySizeToBytes(value: string, path: string): number {
   const match = BINARY_SIZE.exec(value);
   if (match === null) {
     throw SboxError.validation(`Invalid binary size at ${path}.`, {
@@ -46,6 +46,16 @@ export function parseBinarySizeToMiB(value: string, path: string): number {
           : unit === "GiB"
             ? amount * 1024 ** 3
             : amount * 1024 ** 4;
+  if (!Number.isSafeInteger(bytes) || bytes < 1) {
+    throw SboxError.validation(`Binary size at ${path} must resolve to a positive byte count.`, {
+      details: { path },
+    });
+  }
+  return bytes;
+}
+
+export function parseBinarySizeToMiB(value: string, path: string): number {
+  const bytes = parseBinarySizeToBytes(value, path);
   const mib = bytes / 1024 ** 2;
   if (!Number.isInteger(mib) || mib < 1) {
     throw SboxError.validation(`Binary size at ${path} must resolve to a whole positive MiB.`, {

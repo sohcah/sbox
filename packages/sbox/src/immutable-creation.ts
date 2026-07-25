@@ -5,6 +5,7 @@
  */
 
 import type { SandboxImmutableCreation } from "./ownership-adoption.js";
+import { canonicalNetworkFingerprint, canonicalSecretsFingerprint } from "./network/compile.js";
 import {
   defaultNetworkConfig,
   toSafeRuntimeSecret,
@@ -12,7 +13,8 @@ import {
   type ResolvedRuntimeSecret,
   type SafeRuntimeSecret,
 } from "./network/types.js";
-import { canonicalNetworkFingerprint, canonicalSecretsFingerprint } from "./network/compile.js";
+import type { HostVolumeAttachment, VolumeAttachmentSpec } from "./volume/types.js";
+import { canonicalVolumesFingerprint } from "./ownership-adoption.js";
 
 /** SDK defaults observed from microsandbox@0.6.6 minimal builder.build(). */
 export const PHASE1_DEFAULT_CPUS = 1;
@@ -36,6 +38,7 @@ export function projectCreateRequest(request: {
   readonly idleTimeoutSecs?: number | null;
   readonly network?: HostNetworkConfig;
   readonly secrets?: readonly ResolvedRuntimeSecret[];
+  readonly volumes?: readonly HostVolumeAttachment[] | readonly VolumeAttachmentSpec[];
 }): SandboxImmutableCreation {
   const secrets: readonly SafeRuntimeSecret[] = Object.freeze(
     (request.secrets ?? []).map((secret) =>
@@ -44,6 +47,11 @@ export function projectCreateRequest(request: {
         placeholder: secret.placeholder,
         destinations: secret.destinations,
       }),
+    ),
+  );
+  const volumes: readonly VolumeAttachmentSpec[] = Object.freeze(
+    (request.volumes ?? []).map((attachment) =>
+      Object.freeze({ volume: attachment.volume, path: attachment.path }),
     ),
   );
   return Object.freeze({
@@ -59,6 +67,7 @@ export function projectCreateRequest(request: {
     idleTimeoutSecs: request.idleTimeoutSecs ?? null,
     network: request.network ?? defaultNetworkConfig(),
     secrets,
+    volumes,
   });
 }
 
@@ -80,7 +89,9 @@ export function immutableCreationEquals(
     JSON.stringify(canonicalNetworkFingerprint(left.network)) ===
       JSON.stringify(canonicalNetworkFingerprint(right.network)) &&
     JSON.stringify(canonicalSecretsFingerprint(left.secrets)) ===
-      JSON.stringify(canonicalSecretsFingerprint(right.secrets))
+      JSON.stringify(canonicalSecretsFingerprint(right.secrets)) &&
+    JSON.stringify(canonicalVolumesFingerprint(left.volumes)) ===
+      JSON.stringify(canonicalVolumesFingerprint(right.volumes))
   );
 }
 
@@ -134,6 +145,12 @@ export function immutableCreationDriftFields(
     JSON.stringify(canonicalSecretsFingerprint(actual.secrets))
   ) {
     fields.push("secrets");
+  }
+  if (
+    JSON.stringify(canonicalVolumesFingerprint(expected.volumes)) !==
+    JSON.stringify(canonicalVolumesFingerprint(actual.volumes))
+  ) {
+    fields.push("volumes");
   }
   return fields;
 }

@@ -139,6 +139,7 @@ export type {
   SafeUserConfig,
   TargetConfig,
   UserConfig,
+  VolumeAttachment,
   VolumeDeclaration,
 } from "./config/types.js";
 
@@ -225,6 +226,17 @@ export type {
   StaleImageWorkspace,
   HostListStaleImageWorkspacesOptions,
 } from "./image/types.js";
+
+export type {
+  HostEnsureVolumeRequest,
+  HostListVolumesRequest,
+  HostRemoveVolumeRequest,
+  HostVolumeAttachment,
+  HostVolumeInspection,
+  HostVolumeShellRequest,
+  HostVolumeSummary,
+  VolumeAttachmentSpec,
+} from "./volume/types.js";
 
 /** Documented CLI operational exit codes (the runner itself is not exported). */
 export {

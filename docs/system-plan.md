@@ -244,7 +244,9 @@ Under the per-base lock:
 
 1. prove no conflicting final base;
 2. create a blank raw temporary file with portable Node APIs;
-3. format it using a pinned utility sandbox image containing `mkfs.ext4`;
+3. bind-mount the staging directory into a pinned formatter sandbox and run
+   `mkfs.ext4` on the raw file (not virtio-blk — an unformatted disk image
+   fails Microsandbox boot before the agent is available);
 4. convert and validate QCOW2 using host `qemu-img`;
 5. atomically rename it to the deterministic final path.
 

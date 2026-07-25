@@ -19,12 +19,18 @@ export type ExternalValueRef =
 
 export type ConfigValue = string | ExternalValueRef;
 
-/**
- * Phase 6 volume placeholder. Accepted and validated, unused by Phase 2 Host.
- */
+/** Project-scoped managed QCOW2/ext4 base declaration. */
 export interface VolumeDeclaration {
   /** Logical base size, e.g. "4GiB". */
   readonly size: string;
+}
+
+/** Profile attachment of a declared project volume at a guest mount path. */
+export interface VolumeAttachment {
+  /** Project volume slug. */
+  readonly volume: string;
+  /** Absolute guest mount path. */
+  readonly path: string;
 }
 
 /**
@@ -71,6 +77,8 @@ export interface ProfileCommon {
    * Destinations do not grant network access.
    */
   readonly secrets?: readonly RuntimeSecretConfig[];
+  /** Attachments of project-declared volumes (ordinary sandboxes get child overlays). */
+  readonly volumes?: readonly VolumeAttachment[];
 }
 
 /** Existing OCI/native image reference profile. */
@@ -94,7 +102,7 @@ export interface ProjectConfig {
   readonly defaultProfile?: string;
   /** Optional project-selected target name. */
   readonly target?: string;
-  /** Reusable volume declarations (Phase 6 placeholders). */
+  /** Reusable managed QCOW2 volume declarations. */
   readonly volumes?: Readonly<Record<string, VolumeDeclaration>>;
   readonly profiles: Readonly<Record<string, ProfileConfig>>;
 }
@@ -156,6 +164,7 @@ export interface SafeProjectConfig {
         readonly idleTimeoutSecs?: number | null;
         readonly network?: SafeNetworkConfig;
         readonly secrets?: readonly SafeRuntimeSecret[];
+        readonly volumes?: readonly VolumeAttachment[];
       }
     >
   >;

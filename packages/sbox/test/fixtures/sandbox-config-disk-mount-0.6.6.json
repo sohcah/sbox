@@ -1,0 +1,18 @@
+{
+  "fixtureNote": "Captured via Sandbox.builder(...).volume(...).disk().format(\"qcow2\").fstype(\"ext4\").build() on microsandbox@0.6.6. Host path rewritten to a stable placeholder; all other mount fields are verbatim from the SDK.",
+  "mounts": [
+    {
+      "type": "DiskImage",
+      "host": "/tmp/example-child.qcow2",
+      "guest": "/cache",
+      "format": "Qcow2",
+      "fstype": "ext4",
+      "options": {
+        "readonly": false,
+        "noexec": false,
+        "nosuid": false,
+        "nodev": false
+      }
+    }
+  ]
+}

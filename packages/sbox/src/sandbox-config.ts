@@ -14,13 +14,10 @@
  * Not part of the public package declaration graph.
  */
 
-import {
-  PHASE1_DEFAULT_CPUS,
-  PHASE1_DEFAULT_MEMORY_MIB,
-  type SandboxImmutableCreation,
-} from "./immutable-creation.js";
+import { PHASE1_DEFAULT_CPUS, PHASE1_DEFAULT_MEMORY_MIB } from "./immutable-creation.js";
 import { decodeNetworkEvidence, hostNetworkFromEvidence } from "./network/decode.js";
 import type { HostNetworkConfig, SafeRuntimeSecret } from "./network/types.js";
+import { decodeDiskMounts } from "./volume/mounts.js";
 
 export interface DecodedSandboxConfig {
   readonly image: string;
@@ -36,6 +33,12 @@ export interface DecodedSandboxConfig {
   readonly labels: Readonly<Record<string, string>>;
   readonly network: HostNetworkConfig;
   readonly secrets: readonly SafeRuntimeSecret[];
+  readonly mounts: readonly {
+    readonly guestPath: string;
+    readonly hostPath: string;
+    readonly format: string;
+    readonly fstype: string | null;
+  }[];
 }
 
 export function decodeSandboxConfig(config: unknown): DecodedSandboxConfig {
@@ -72,24 +75,15 @@ export function decodeSandboxConfig(config: unknown): DecodedSandboxConfig {
     labels: readLabels(root["labels"]),
     network: hostNetworkFromEvidence(networkEvidence),
     secrets: networkEvidence.secrets,
+    mounts: decodeDiskMounts(config).map((mount) =>
+      Object.freeze({
+        guestPath: mount.guest,
+        hostPath: mount.host,
+        format: mount.format,
+        fstype: mount.fstype,
+      }),
+    ),
   };
-}
-
-export function projectDecodedConfig(decoded: DecodedSandboxConfig): SandboxImmutableCreation {
-  return Object.freeze({
-    image: decoded.image,
-    cpus: decoded.cpus,
-    memoryMiB: decoded.memoryMiB,
-    workdir: decoded.workdir,
-    user: decoded.user,
-    shell: decoded.shell,
-    hostname: decoded.hostname,
-    env: Object.freeze({ ...decoded.env }),
-    maxDurationSecs: decoded.maxDurationSecs,
-    idleTimeoutSecs: decoded.idleTimeoutSecs,
-    network: decoded.network,
-    secrets: decoded.secrets,
-  });
 }
 
 /**

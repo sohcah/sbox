@@ -17,6 +17,7 @@ import {
 } from "./ownership.js";
 import { canonicalNetworkFingerprint, canonicalSecretsFingerprint } from "./network/compile.js";
 import type { HostNetworkConfig, SafeRuntimeSecret } from "./network/types.js";
+import type { VolumeAttachmentSpec } from "./volume/types.js";
 
 /**
  * Complete Phase 1 immutable creation projection used for ownership/adoption.
@@ -35,6 +36,7 @@ export interface SandboxImmutableCreation {
   readonly idleTimeoutSecs: number | null;
   readonly network: HostNetworkConfig;
   readonly secrets: readonly SafeRuntimeSecret[];
+  readonly volumes: readonly VolumeAttachmentSpec[];
 }
 
 /**
@@ -99,6 +101,7 @@ export type NativeCreationEvidence = {
   readonly idleTimeoutSecs: number | null;
   readonly network: HostNetworkConfig;
   readonly secrets: readonly SafeRuntimeSecret[];
+  readonly volumes: readonly VolumeAttachmentSpec[];
 };
 
 /**
@@ -139,6 +142,7 @@ export function nativeRecordMatchesCreation(
     readonly idleTimeoutSecs: number | null;
     readonly network: HostNetworkConfig;
     readonly secrets: readonly SafeRuntimeSecret[];
+    readonly volumes: readonly VolumeAttachmentSpec[];
   },
   requested: SandboxImmutableCreation,
 ): boolean {
@@ -178,6 +182,12 @@ export function nativeRecordMatchesCreation(
   if (
     JSON.stringify(canonicalSecretsFingerprint(record.secrets)) !==
     JSON.stringify(canonicalSecretsFingerprint(requested.secrets))
+  ) {
+    return false;
+  }
+  if (
+    JSON.stringify(canonicalVolumesFingerprint(record.volumes)) !==
+    JSON.stringify(canonicalVolumesFingerprint(requested.volumes))
   ) {
     return false;
   }
@@ -222,6 +232,18 @@ function creationFingerprint(projection: SandboxImmutableCreation): string {
     idleTimeoutSecs: projection.idleTimeoutSecs,
     network: canonicalNetworkFingerprint(projection.network),
     secrets: canonicalSecretsFingerprint(projection.secrets),
+    volumes: canonicalVolumesFingerprint(projection.volumes),
   });
   return createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 32);
+}
+
+export function canonicalVolumesFingerprint(
+  volumes: readonly VolumeAttachmentSpec[],
+): readonly { readonly volume: string; readonly path: string }[] {
+  return [...volumes]
+    .map((attachment) => ({ volume: attachment.volume, path: attachment.path }))
+    .toSorted((a, b) => {
+      const byVolume = a.volume.localeCompare(b.volume);
+      return byVolume !== 0 ? byVolume : a.path.localeCompare(b.path);
+    });
 }

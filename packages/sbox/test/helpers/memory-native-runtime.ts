@@ -71,6 +71,7 @@ export class MemoryNativeRuntime implements NativeRuntime {
           env: Object.freeze({}),
           network: defaultNetworkConfig(),
           secrets: [],
+          mounts: [],
         },
       });
       throw SboxError.internal("Simulated uncertain create failure (conflict).");
@@ -187,9 +188,10 @@ export class MemoryNativeRuntime implements NativeRuntime {
   }
 
   seed(
-    record: Omit<NativeSandboxRecord, "network" | "secrets"> & {
+    record: Omit<NativeSandboxRecord, "network" | "secrets" | "mounts"> & {
       readonly network?: NativeSandboxRecord["network"];
       readonly secrets?: NativeSandboxRecord["secrets"];
+      readonly mounts?: NativeSandboxRecord["mounts"];
     },
   ): void {
     this.byName.set(record.name, {
@@ -197,6 +199,7 @@ export class MemoryNativeRuntime implements NativeRuntime {
         ...record,
         network: record.network ?? defaultNetworkConfig(),
         secrets: record.secrets ?? [],
+        mounts: record.mounts ?? [],
       }),
     });
   }
@@ -259,6 +262,16 @@ export class MemoryNativeRuntime implements NativeRuntime {
           }),
         ),
       ),
+      mounts: Object.freeze(
+        (request.mounts ?? []).map((mount) =>
+          Object.freeze({
+            guestPath: mount.guestPath,
+            hostPath: mount.hostPath,
+            format: mount.format,
+            fstype: mount.fstype,
+          }),
+        ),
+      ),
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
     };
@@ -285,6 +298,16 @@ function cloneRecord(record: NativeSandboxRecord): NativeSandboxRecord {
           env: secret.env,
           placeholder: secret.placeholder,
           destinations: secret.destinations,
+        }),
+      ),
+    ),
+    mounts: Object.freeze(
+      record.mounts.map((mount) =>
+        Object.freeze({
+          guestPath: mount.guestPath,
+          hostPath: mount.hostPath,
+          format: mount.format,
+          fstype: mount.fstype,
         }),
       ),
     ),

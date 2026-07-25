@@ -64,6 +64,22 @@ class MicrosandboxRuntime implements NativeRuntime {
         applyNetworkToBuilder(network, request.network, request.secrets),
       );
 
+      for (const mount of request.mounts ?? []) {
+        builder = builder.volume(mount.guestPath, (m) => {
+          let disk = m.disk(mount.hostPath).format(mount.format);
+          if (mount.fstype !== null) {
+            disk = disk.fstype(mount.fstype);
+          }
+          return disk;
+        });
+      }
+
+      for (const mount of request.bindMounts ?? []) {
+        builder = builder.volume(mount.guestPath, (m) =>
+          m.bind(mount.hostPath).quota(mount.quotaMiB),
+        );
+      }
+
       const sandbox = await builder.create();
       return wrapLive(sandbox);
     } catch (error) {
@@ -195,6 +211,12 @@ export function recordFromHandle(handle: {
     env: decoded.env,
     network: decoded.network,
     secrets: decoded.secrets,
+    mounts: decoded.mounts.map((mount) => ({
+      guestPath: mount.guestPath,
+      hostPath: mount.hostPath,
+      format: mount.format === "raw" ? "raw" : "qcow2",
+      fstype: mount.fstype === "ext4" ? "ext4" : null,
+    })),
     ...(handle.createdAt !== null ? { createdAt: handle.createdAt.toISOString() } : {}),
     ...(handle.updatedAt !== null ? { updatedAt: handle.updatedAt.toISOString() } : {}),
   };

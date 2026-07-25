@@ -11,6 +11,7 @@ import { runExec, runShell } from "./commands/exec-shell.js";
 import { runBuild, runImageList, runImageRemove } from "./commands/image.js";
 import { runInit } from "./commands/init.js";
 import { runInspect, runList, runRemove, runStop, runUp } from "./commands/lifecycle.js";
+import { runVolumeList, runVolumeRemove, runVolumeShell } from "./commands/volume.js";
 import type { CliContext, CliGlobalFlags, CliIo } from "./context.js";
 import { writeResult } from "./context.js";
 import { EXIT_SUCCESS, EXIT_VALIDATION, exitCodeForError } from "./exit-codes.js";
@@ -37,6 +38,9 @@ Usage:
   sbox remove <profile>
   sbox image list
   sbox image remove <exact-image> [--force]
+  sbox volume list
+  sbox volume shell <profile> <volume>
+  sbox volume remove <volume>
   sbox exec [profile] [--cwd <path>] [--user <name>] [--stream] -- <argv...>
   sbox shell [profile] [--cwd <path>] [--user <name>] [--stream] -- <script>
 
@@ -167,6 +171,35 @@ export async function runCli(options: RunCliOptions): Promise<number> {
         throw SboxError.validation('Expected "image list" or "image remove <exact-image>".', {
           details: { path: "argv" },
         });
+      }
+      case "volume": {
+        const sub = rest[0];
+        if (sub === "list") {
+          return await runVolumeList(ctx);
+        }
+        if (sub === "shell") {
+          const profile = rest[1];
+          const volume = rest[2];
+          if (profile === undefined || volume === undefined) {
+            throw SboxError.validation('Expected "volume shell <profile> <volume>".', {
+              details: { path: "argv" },
+            });
+          }
+          return await runVolumeShell(ctx, { profile, volume });
+        }
+        if (sub === "remove") {
+          const volume = rest[1];
+          if (volume === undefined) {
+            throw SboxError.validation('Expected "volume remove <volume>".', {
+              details: { path: "argv" },
+            });
+          }
+          return await runVolumeRemove(ctx, { volume });
+        }
+        throw SboxError.validation(
+          'Expected "volume list", "volume shell <profile> <volume>", or "volume remove <volume>".',
+          { details: { path: "argv" } },
+        );
       }
       case "list":
         return await runList(ctx);

@@ -14,9 +14,12 @@ import type {
   HostPtyRequest,
 } from "./host.js";
 import {
+  assertProjectId,
+  assertProfileId,
   assertSandboxIdentity,
   nativeSandboxName,
   type NativeSandboxName,
+  type ProjectId,
   type SandboxIdentity,
 } from "./identity.js";
 import { ensureImage, type EnsureImagePorts } from "./image/ensure.js";
@@ -113,6 +116,10 @@ export class FakeHost implements Host {
       readonly env: readonly string[];
       readonly owned: boolean;
     }
+  >();
+  private readonly volumes = new Map<
+    string,
+    { readonly project: ProjectId; readonly volume: string; readonly sizeBytes: number }
   >();
   private readonly logger: Logger;
   private readonly now: () => Date;
@@ -265,8 +272,139 @@ export class FakeHost implements Host {
     return this.withOperation("capabilities", undefined, options, async () => ({
       localMicrosandbox: false,
       dynamicHostPorts: this.dynamicHostPorts,
+      qemuImg: true,
       notes: ["FakeHost models the Host contract in memory."],
     }));
+  }
+
+  async listVolumes(
+    request: import("./volume/types.js").HostListVolumesRequest,
+    options?: OperationOptions,
+  ): Promise<readonly import("./volume/types.js").HostVolumeSummary[]> {
+    this.operations.push("listVolumes");
+    return this.withOperation("listVolumes", undefined, options, async () => {
+      const out: import("./volume/types.js").HostVolumeSummary[] = [];
+      for (const [key, stored] of this.volumes) {
+        if (stored.project !== request.project) {
+          continue;
+        }
+        out.push({
+          project: stored.project,
+          volume: stored.volume,
+          basePath: `fake://${key}`,
+          sizeBytes: stored.sizeBytes,
+          descendantCount: this.countVolumeDescendants(stored.project, stored.volume),
+        });
+      }
+      return out.toSorted((a, b) => a.volume.localeCompare(b.volume));
+    });
+  }
+
+  async ensureVolume(
+    request: import("./volume/types.js").HostEnsureVolumeRequest,
+    options?: OperationOptions,
+  ): Promise<import("./volume/types.js").HostVolumeInspection> {
+    this.operations.push("ensureVolume");
+    return this.withOperation("ensureVolume", undefined, options, async () => {
+      const key = `${request.project}\0${request.volume}`;
+      const existing = this.volumes.get(key);
+      if (existing !== undefined && existing.sizeBytes !== request.sizeBytes) {
+        throw SboxError.ownershipConflict(
+          "Managed volume base virtual size does not match the declared size.",
+          {
+            details: {
+              expectedSizeBytes: request.sizeBytes,
+              actualSizeBytes: existing.sizeBytes,
+            },
+          },
+        );
+      }
+      if (existing === undefined) {
+        this.volumes.set(key, {
+          project: assertProjectId(request.project),
+          volume: request.volume,
+          sizeBytes: request.sizeBytes,
+        });
+      }
+      return {
+        project: assertProjectId(request.project),
+        volume: request.volume,
+        basePath: `fake://${key}`,
+        sizeBytes: request.sizeBytes,
+        format: "qcow2",
+        descendantCount: this.countVolumeDescendants(request.project, request.volume),
+      };
+    });
+  }
+
+  async removeVolume(
+    request: import("./volume/types.js").HostRemoveVolumeRequest,
+    options?: OperationOptions,
+  ): Promise<void> {
+    this.operations.push("removeVolume");
+    await this.withOperation("removeVolume", undefined, options, async () => {
+      const key = `${request.project}\0${request.volume}`;
+      if (!this.volumes.has(key)) {
+        throw SboxError.notFound(`Volume ${request.project}/${request.volume} was not found.`);
+      }
+      const descendants = this.countVolumeDescendants(request.project, request.volume);
+      if (descendants > 0) {
+        throw SboxError.busy(
+          `Volume ${request.volume} has ${descendants} descendant sandbox overlay(s); remove them before maintenance or base removal.`,
+        );
+      }
+      this.volumes.delete(key);
+    });
+  }
+
+  async volumeShell(
+    request: import("./volume/types.js").HostVolumeShellRequest,
+    options?: OperationOptions,
+  ): Promise<SandboxInspection> {
+    this.operations.push("volumeShell");
+    const { maintenanceIdentity } = await import("./volume/maintenance.js");
+    const identity = maintenanceIdentity(
+      assertProjectId(request.project),
+      assertProfileId(request.profile),
+      request.volume,
+    );
+    return this.withOperation("volumeShell", identity, options, async () => {
+      await this.ensureVolume(
+        {
+          project: request.project,
+          volume: request.volume,
+          sizeBytes: request.sizeBytes,
+        },
+        options,
+      );
+      const descendants = this.countVolumeDescendants(request.project, request.volume);
+      if (descendants > 0) {
+        throw SboxError.busy(
+          `Volume ${request.volume} has ${descendants} descendant sandbox overlay(s); remove them before maintenance or base removal.`,
+        );
+      }
+      return this.create(
+        {
+          identity,
+          image: request.image,
+          ...(request.cpus !== undefined ? { cpus: request.cpus } : {}),
+          ...(request.memoryMiB !== undefined ? { memoryMiB: request.memoryMiB } : {}),
+          ...(request.workdir !== undefined ? { workdir: request.workdir } : {}),
+          ...(request.user !== undefined ? { user: request.user } : {}),
+          ...(request.shell !== undefined ? { shell: request.shell } : {}),
+          ...(request.hostname !== undefined ? { hostname: request.hostname } : {}),
+          ...(request.env !== undefined ? { env: request.env } : {}),
+          ...(request.maxDurationSecs !== undefined
+            ? { maxDurationSecs: request.maxDurationSecs }
+            : {}),
+          ...(request.idleTimeoutSecs !== undefined
+            ? { idleTimeoutSecs: request.idleTimeoutSecs }
+            : {}),
+          volumes: [{ volume: request.volume, path: request.path, sizeBytes: request.sizeBytes }],
+        },
+        options,
+      );
+    });
   }
 
   async ensureImage(
@@ -562,6 +700,7 @@ export class FakeHost implements Host {
         memoryMiB: 512,
         network: toSafeNetworkConfig(defaultNetworkConfig()),
         secrets: [],
+        volumes: [],
       },
       env: {},
       maxDurationSecs: null,
@@ -813,6 +952,22 @@ export class FakeHost implements Host {
       throw SboxError.internal("FakeHost has been disposed.");
     }
   }
+
+  private countVolumeDescendants(project: string, volume: string): number {
+    let count = 0;
+    for (const stored of this.byKey.values()) {
+      if (stored.identity.project !== project) {
+        continue;
+      }
+      if (stored.identity.instance.startsWith("vmaint-")) {
+        continue;
+      }
+      if (stored.creation.volumes.some((attachment) => attachment.volume === volume)) {
+        count += 1;
+      }
+    }
+    return count;
+  }
 }
 
 function creationFromProjection(
@@ -838,6 +993,7 @@ function creationFromProjection(
       })),
     ),
     secrets: [...projected.secrets],
+    volumes: [...projected.volumes],
   };
 }
 

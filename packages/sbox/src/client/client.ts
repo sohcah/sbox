@@ -26,6 +26,7 @@ import { isBuildProfile } from "../config/types.js";
 import { parseProjectConfig, parseUserConfig } from "../config/validate.js";
 import { requireLocalTarget, type ResolvedLocalTarget } from "../config/targets.js";
 import type { ExternalResolutionContext } from "../config/external.js";
+import { parseBinarySizeToBytes } from "../config/scalars.js";
 import { resolveInstanceId, selectProfile } from "../config/profile.js";
 import type { SandboxHandle } from "./handle.js";
 import { HostSandboxHandle } from "./handle-impl.js";
@@ -114,6 +115,13 @@ export interface SboxClient extends AsyncDisposable {
     identityOrOptions: SandboxIdentity | ProfileOperationOptions,
     options?: ClientOperationOptions,
   ): Promise<void>;
+  listVolumes(options?: ClientOperationOptions): Promise<Awaited<ReturnType<Host["listVolumes"]>>>;
+  ensureVolume(
+    volume: string,
+    options?: ClientOperationOptions,
+  ): Promise<Awaited<ReturnType<Host["ensureVolume"]>>>;
+  removeVolume(volume: string, options?: ClientOperationOptions): Promise<void>;
+  volumeShell(volume: string, options?: ProfileOperationOptions): Promise<SandboxHandle>;
 }
 
 class HostSboxClient implements SboxClient {
@@ -316,6 +324,106 @@ class HostSboxClient implements SboxClient {
     return this.withOperation("remove", resolved.identity, resolved.options, async () => {
       await this.requireLocal(resolved.options);
       await this.host.remove(resolved.identity, toHostOptions(resolved.options));
+    });
+  }
+
+  async listVolumes(
+    options: ClientOperationOptions = {},
+  ): Promise<Awaited<ReturnType<Host["listVolumes"]>>> {
+    return this.withOperation("listVolumes", undefined, options, async () => {
+      await this.requireLocal(options);
+      return this.host.listVolumes(
+        { project: assertProjectId(this.project.project) },
+        toHostOptions(options),
+      );
+    });
+  }
+
+  async ensureVolume(
+    volume: string,
+    options: ClientOperationOptions = {},
+  ): Promise<Awaited<ReturnType<Host["ensureVolume"]>>> {
+    return this.withOperation("ensureVolume", undefined, options, async () => {
+      await this.requireLocal(options);
+      const declaration = this.project.volumes?.[volume];
+      if (declaration === undefined) {
+        throw SboxError.validation(`Volume "${volume}" is not declared in project volumes.`, {
+          details: { path: `volumes.${volume}` },
+        });
+      }
+      return this.host.ensureVolume(
+        {
+          project: assertProjectId(this.project.project),
+          volume,
+          sizeBytes: parseBinarySizeToBytes(declaration.size, `volumes.${volume}.size`),
+        },
+        toHostOptions(options),
+      );
+    });
+  }
+
+  async removeVolume(volume: string, options: ClientOperationOptions = {}): Promise<void> {
+    await this.withOperation("removeVolume", undefined, options, async () => {
+      await this.requireLocal(options);
+      if (this.project.volumes?.[volume] === undefined) {
+        throw SboxError.validation(`Volume "${volume}" is not declared in project volumes.`, {
+          details: { path: `volumes.${volume}` },
+        });
+      }
+      await this.host.removeVolume(
+        { project: assertProjectId(this.project.project), volume },
+        toHostOptions(options),
+      );
+    });
+  }
+
+  async volumeShell(volume: string, options: ProfileOperationOptions = {}): Promise<SandboxHandle> {
+    return this.withOperation("volumeShell", undefined, options, async () => {
+      await this.requireLocal(options);
+      const declaration = this.project.volumes?.[volume];
+      if (declaration === undefined) {
+        throw SboxError.validation(`Volume "${volume}" is not declared in project volumes.`, {
+          details: { path: `volumes.${volume}` },
+        });
+      }
+      const selected = selectProfile(this.project, options.profile);
+      const attachment = (selected.profile.volumes ?? []).find((item) => item.volume === volume);
+      if (attachment === undefined) {
+        throw SboxError.validation(`Profile ${selected.name} does not attach volume "${volume}".`, {
+          details: { path: `profiles.${selected.name}.volumes` },
+        });
+      }
+      const intent = await this.resolveIntent({
+        ...options,
+        profile: selected.name,
+      });
+      const inspection = await this.host.volumeShell(
+        {
+          project: assertProjectId(this.project.project),
+          volume,
+          sizeBytes: parseBinarySizeToBytes(declaration.size, `volumes.${volume}.size`),
+          profile: selected.name,
+          image: intent.request.image,
+          ...(intent.request.cpus !== undefined ? { cpus: intent.request.cpus } : {}),
+          ...(intent.request.memoryMiB !== undefined
+            ? { memoryMiB: intent.request.memoryMiB }
+            : {}),
+          ...(intent.request.workdir !== undefined ? { workdir: intent.request.workdir } : {}),
+          ...(intent.request.user !== undefined ? { user: intent.request.user } : {}),
+          ...(intent.request.shell !== undefined ? { shell: intent.request.shell } : {}),
+          ...(intent.request.hostname !== undefined ? { hostname: intent.request.hostname } : {}),
+          ...(intent.request.env !== undefined ? { env: intent.request.env } : {}),
+          ...(intent.request.maxDurationSecs !== undefined
+            ? { maxDurationSecs: intent.request.maxDurationSecs }
+            : {}),
+          ...(intent.request.idleTimeoutSecs !== undefined
+            ? { idleTimeoutSecs: intent.request.idleTimeoutSecs }
+            : {}),
+          path: attachment.path,
+        },
+        toHostOptions(options),
+      );
+      return new HostSandboxHandle(this.host, inspection.identity);
     });
   }
 

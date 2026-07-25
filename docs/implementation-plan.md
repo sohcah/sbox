@@ -351,7 +351,7 @@ Implement:
 - QCOW2/ext4 volume definitions with logical size and profile attachment paths;
 - capability checks for host `qemu-img` only when volumes are used;
 - pinned formatter image containing `mkfs.ext4` and portable guest-side raw
-  formatting;
+  formatting via bind-mounted staging (not unformatted virtio-blk);
 - temporary base creation, validation, conversion, and atomic final publication;
 - deterministic direct child creation and `qemu-img info` validation of format,
   virtual size, and exact backing path;
@@ -375,10 +375,13 @@ Tests and evidence:
 
 - exact managed-path containment, ownership labels, base/child validation,
   wrong backing path, size mismatch, and conflicting files;
-- atomic creation crash windows and cleanup;
-- per-base lock exclusion, OS/process-death release, unrelated-base concurrency,
-  and proof no lifecycle/image operation uses the lock;
-- maintenance refusal with running/stopped children and concurrent child race;
+- atomic creation crash windows and cleanup (failed format removes
+  `base.qcow2.partial-*` / `.staging-*`; orphaned partials do not block ensure);
+- per-base lock exclusion, OS/process-death release (subprocess holder),
+  unrelated-base concurrency, and proof lifecycle/image ops do not take the
+  lock (list/inspect/stop/start succeed while create is busy);
+- maintenance refusal with running/stopped children and concurrent child race
+  (ordinary create busy while live maintenance holds the base);
 - simulated owner death, persisted maintenance recovery, native-busy retry, and
   stop/detach/fresh-get/remove sequence;
 - uncertain create/remove overlay cleanup without journals;
@@ -388,6 +391,39 @@ Tests and evidence:
 Exit condition: ordinary sandboxes receive disposable child writes and an
 exclusive maintenance shell can intentionally update one shared base without a
 volume database or lineage manager.
+
+### Phase 6 implementation notes
+
+- Project `volumes.<name>.size` plus profile `volumes: [{ volume, path }]` with
+  cross-reference validation (unique volume + guest path per profile).
+- Deterministic host paths under `SBOX_VOLUME_DATA_ROOT` or `~/.sbox/volumes`:
+  `<project>/<volume>/base.qcow2` and
+  `children/<instance>/<volume>.qcow2`.
+- Per-base OS-released lock via exclusive Unix-domain / Windows named-pipe
+  listen on a short hashed address (`/tmp/sbox-vl-<hash>.sock` or
+  `\\.\pipe\sbox-vol-<hash>`) keyed by the logical base path — unused by
+  lifecycle/image operations. Deep data roots must not hit `sun_path` limits.
+- Base create: blank raw → formatter guest bind-mounts the staging directory
+  (`SBOX_VOLUME_FORMATTER_IMAGE`, default `sbox-volume-formatter:1` from
+  `packages/sbox/formatter/Dockerfile`, which already contains `mkfs.ext4`) →
+  guest `mkfs.ext4 -F` on the raw file → `qemu-img convert` → atomic rename.
+  Formatter networking is disabled; packages are never installed at runtime.
+  Raw virtio-blk without a mountable filesystem is not used (MSB boot fails).
+- Ordinary create holds base locks, recovers *terminal* crashed maintenance
+  only (live maintenance fails closed as busy), ensures base, creates
+  validated child overlays, attaches via SDK `.volume(...).disk(...)`.
+- Remove deletes only deterministic child overlay paths (never the base);
+  refuse base remove/maintenance while ordinary descendants exist.
+- Uncertain create rolls back overlays only after confirming the native
+  sandbox is absent (or is an ownership conflict orphan).
+- CLI: `volume list`, `volume shell <profile> <volume>`, `volume remove`.
+- Unit coverage in `packages/sbox/test/volume.test.ts` and
+  `packages/sbox/test/volume-localhost.test.ts`; real formatting acceptance
+  scaffold in `packages/sbox/test/volume.acceptance.test.ts`.
+- Disk-mount decode fixture
+  `packages/sbox/test/fixtures/sandbox-config-disk-mount-0.6.6.json` captured
+  from `Sandbox.builder(...).volume(...).disk().format("qcow2").fstype("ext4").build()`
+  on microsandbox@0.6.6 (`type: "DiskImage"`, `format: "Qcow2"`).
 
 ## Phase 7: Remote Host and foreground server
 

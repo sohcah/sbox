@@ -66,6 +66,7 @@ async function seedDefault(host: FakeHost): Promise<void> {
       shell: "/bin/sh",
       network: toSafeNetworkConfig(defaultNetworkConfig()),
       secrets: [],
+      volumes: [],
     },
   });
 }

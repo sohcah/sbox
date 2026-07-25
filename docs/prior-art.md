@@ -65,7 +65,8 @@ Retain:
 - SDK lifecycle works on macOS and Windows under an isolated short `MSB_HOME`.
 - QCOW2 testing proved the stopped-handle detach requirement.
 - The Windows-oriented spike proved the portable formatting approach: expose a
-  blank raw host file to a disposable formatter guest, run `mkfs.ext4` there,
+  blank raw host file to a disposable formatter guest (bind-mounted staging
+  directory — not virtio-blk of an unformatted image), run `mkfs.ext4` there,
   then convert it to QCOW2 with host `qemu-img`.
 - Persisted Microsandbox configuration retains exact external disk paths across
   fresh lookup/process restart; native removal does not delete those files.

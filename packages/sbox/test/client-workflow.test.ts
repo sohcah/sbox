@@ -108,6 +108,34 @@ class RecordingHost implements Host {
     this.record(options);
     return this.inner.listStaleImageWorkspaces(options);
   }
+  listVolumes(
+    request: Parameters<Host["listVolumes"]>[0],
+    options?: Parameters<Host["listVolumes"]>[1],
+  ) {
+    this.record(options);
+    return this.inner.listVolumes(request, options);
+  }
+  ensureVolume(
+    request: Parameters<Host["ensureVolume"]>[0],
+    options?: Parameters<Host["ensureVolume"]>[1],
+  ) {
+    this.record(options);
+    return this.inner.ensureVolume(request, options);
+  }
+  removeVolume(
+    request: Parameters<Host["removeVolume"]>[0],
+    options?: Parameters<Host["removeVolume"]>[1],
+  ) {
+    this.record(options);
+    return this.inner.removeVolume(request, options);
+  }
+  volumeShell(
+    request: Parameters<Host["volumeShell"]>[0],
+    options?: Parameters<Host["volumeShell"]>[1],
+  ) {
+    this.record(options);
+    return this.inner.volumeShell(request, options);
+  }
   execArgv(
     request: HostExecArgvRequest,
     options?: HostCollectedExecOptions,

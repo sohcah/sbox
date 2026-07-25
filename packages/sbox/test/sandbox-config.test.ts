@@ -149,6 +149,7 @@ describe("immutable creation projection", () => {
         publish: [],
       },
       secrets: [],
+      volumes: [],
     });
   });
 
@@ -217,6 +218,7 @@ describe("immutable creation projection", () => {
           env: { A: "1", PATH: "/usr/bin" },
           network: defaultNetworkConfig(),
           secrets: [],
+          volumes: [],
         },
         requested,
       ),
@@ -236,6 +238,7 @@ describe("immutable creation projection", () => {
           env: { A: "1", EXTRA: "nope" },
           network: defaultNetworkConfig(),
           secrets: [],
+          volumes: [],
         },
         requested,
       ),
@@ -255,6 +258,7 @@ describe("immutable creation projection", () => {
           env: { A: "1" },
           network: defaultNetworkConfig(),
           secrets: [],
+          volumes: [],
         },
         requested,
       ),

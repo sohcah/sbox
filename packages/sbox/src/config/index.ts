@@ -16,6 +16,7 @@ export type {
   SafeUserConfig,
   TargetConfig,
   UserConfig,
+  VolumeAttachment,
   VolumeDeclaration,
 } from "./types.js";
 
@@ -86,6 +87,7 @@ export {
   isBinarySize,
   isEnvVarName,
   isPositiveDuration,
+  parseBinarySizeToBytes,
   parseBinarySizeToMiB,
   parseDurationToSecs,
 } from "./scalars.js";

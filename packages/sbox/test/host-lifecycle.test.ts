@@ -69,6 +69,7 @@ describe.each(hostFactories())("Host lifecycle contract ($name)", ({ create }) =
         env: {},
         network: defaultNetworkConfig(),
         secrets: [],
+        volumes: [],
       }),
     );
 
@@ -186,6 +187,7 @@ describe.each(hostFactories())("Host stop preconditions ($name)", ({ create }) =
         env: {},
         network: defaultNetworkConfig(),
         secrets: [],
+        volumes: [],
       }),
       image: "alpine:3.20",
       cpus: 1,
@@ -199,6 +201,7 @@ describe.each(hostFactories())("Host stop preconditions ($name)", ({ create }) =
       env: {},
       network: defaultNetworkConfig(),
       secrets: [],
+      volumes: [],
     };
 
     runtime.seed({ ...baseRecord, status: "running" });

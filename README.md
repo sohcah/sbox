@@ -16,12 +16,19 @@ does not maintain a second sandbox database or orchestration state machine.
 
 ## Status
 
-Phase 3 is implemented: local exact-argv and guest-shell execution (collected
-and streaming), interactive PTY with arbitrary streams and resize, bidirectional
-file/directory transfer, and CLI `exec` / `shell` over the Host seam.
+Phase 4 is implemented for Dockerfile-backed profiles: content-addressed identity,
+Docker build → ownership stamp → export → `msb image load`, in-process coalescing,
+CLI `build` / `image list` / `image remove`, and automatic `up` ensure/reuse. There
+is no image database, registry, or cross-process build lock.
 
-Later phases add Docker image building, networking, QCOW2 volumes, remote
-transport, and the Sandcastle adapter.
+Ownership evidence stamps reserved OCI labels and reserved image-config ENV
+markers. After load, ENV-only ownership is accepted only when reserved labels
+are entirely absent (Phase 4 amendment for Microsandbox `0.6.6`, which drops
+OCI labels but preserves ENV). Any present partial or contradictory reserved
+evidence fails closed. A matching tag alone is never ownership evidence.
+
+Later phases add networking, QCOW2 volumes, remote transport, and the Sandcastle
+adapter.
 
 ## Development
 
@@ -33,16 +40,19 @@ pnpm test:acceptance       # optional real Microsandbox (needs runtime)
                            # unavailable is reported as a skipped Vitest test, not a pass
 ```
 
-## Quick start (Phase 3)
+## Quick start (Phase 4)
 
 ```bash
 sbox init --project demo
+# Edit sbox.yaml: use `image: alpine:3.20` or a `build:` block with context/Dockerfile
 sbox config validate
+sbox build default          # requires a build: profile (errors for image: refs)
 sbox up default
+sbox image list
 sbox exec default -- printf '%s' hello
-sbox shell default -- 'echo shell-ok'
 sbox stop default
 sbox remove default
+sbox image remove <exact-image>   # generated refs only
 ```
 
 Programmatic equivalent:

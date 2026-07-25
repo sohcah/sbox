@@ -12,6 +12,7 @@ import { isSboxError, SboxError, throwIfAborted, wrapUnknownFailure } from "../e
 import type { Host } from "../host.js";
 import { disposeHost } from "../host.js";
 import { assertProjectId, assertSandboxIdentity, type SandboxIdentity } from "../identity.js";
+import type { HostImageInspection, ImageBuildProgressEvent } from "../image/types.js";
 import { createLocalHost } from "../local-host.js";
 import { createRedactingLogger, safeLog, silentLogger, type Logger } from "../logging.js";
 import type {
@@ -21,13 +22,20 @@ import type {
   SandboxSummary,
 } from "../types.js";
 import type { ProjectConfig, UserConfig } from "../config/types.js";
+import { isBuildProfile } from "../config/types.js";
 import { parseProjectConfig, parseUserConfig } from "../config/validate.js";
 import { requireLocalTarget, type ResolvedLocalTarget } from "../config/targets.js";
 import type { ExternalResolutionContext } from "../config/external.js";
 import { resolveInstanceId, selectProfile } from "../config/profile.js";
 import type { SandboxHandle } from "./handle.js";
 import { HostSandboxHandle } from "./handle-impl.js";
-import { reportCreationDrift, resolveCreateIntent } from "./resolve-intent.js";
+import { computeGeneratedImageIdentity } from "../image/compute.js";
+import {
+  reportCreationDrift,
+  resolveCreateIntent,
+  resolveEnsureImageRequest,
+  resolveImageIdentityInputs,
+} from "./resolve-intent.js";
 
 export interface SboxClientOptions {
   readonly project: ProjectConfig;
@@ -53,6 +61,12 @@ export interface ProfileOperationOptions extends ClientOperationOptions {
   readonly invocation?: Readonly<Record<string, string>>;
 }
 
+export interface ClientBuildOptions extends ProfileOperationOptions {
+  readonly force?: boolean;
+  readonly onProgress?: (event: ImageBuildProgressEvent) => void;
+  readonly timeoutMs?: number;
+}
+
 export interface ClientListOptions extends HostListOptions {
   readonly target?: string;
 }
@@ -71,6 +85,18 @@ export interface SboxClient extends AsyncDisposable {
   list(options?: ClientListOptions): Promise<readonly SandboxSummary[]>;
   up(options?: ProfileOperationOptions): Promise<SandboxHandle>;
   recreate(options?: ProfileOperationOptions): Promise<SandboxHandle>;
+  /** Ensure the exact generated image for a Dockerfile-backed profile. */
+  build(options?: ClientBuildOptions): Promise<HostImageInspection>;
+  listImages(
+    options?: ClientOperationOptions & { readonly includeUnowned?: boolean },
+  ): Promise<Awaited<ReturnType<Host["listImages"]>>>;
+  removeImage(
+    reference: string,
+    options?: ClientOperationOptions & { readonly force?: boolean },
+  ): Promise<void>;
+  listStaleImageWorkspaces(
+    options?: ClientOperationOptions & { readonly workspaceRoot?: string },
+  ): Promise<Awaited<ReturnType<Host["listStaleImageWorkspaces"]>>>;
   inspect(
     identityOrOptions: SandboxIdentity | ProfileOperationOptions,
     options?: ClientOperationOptions,
@@ -145,15 +171,18 @@ class HostSboxClient implements SboxClient {
 
   /**
    * Narrow convenience workflow:
-   * - absent → create and start (create already starts attached/running)
+   * - absent → ensure image (if build-backed), create and start
    * - stopped → start
    * - running → success
    * Does not reconcile immutable creation drift.
+   *
+   * For build profiles, computes the expected image identity without Docker
+   * mutation, looks up the sandbox first, and only ensures/builds when absent.
    */
   async up(options: ProfileOperationOptions = {}): Promise<SandboxHandle> {
     return this.withOperation("up", undefined, options, async () => {
       await this.requireLocal(options);
-      const intent = await this.resolveIntent(options);
+      const intent = await this.resolveIntentPredictingImage(options);
       const hostOptions = toHostOptions(options);
 
       let existing: SandboxInspection | undefined;
@@ -166,6 +195,9 @@ class HostSboxClient implements SboxClient {
       }
 
       if (existing === undefined) {
+        if (intent.needsImageEnsure) {
+          await this.ensureProfileImage(options);
+        }
         const created = await this.host.create(intent.request, hostOptions);
         return new HostSandboxHandle(this.host, created.identity);
       }
@@ -202,6 +234,50 @@ class HostSboxClient implements SboxClient {
 
       const created = await this.host.create(intent.request, hostOptions);
       return new HostSandboxHandle(this.host, created.identity);
+    });
+  }
+
+  async build(options: ClientBuildOptions = {}): Promise<HostImageInspection> {
+    return this.withOperation("build", undefined, options, async () => {
+      await this.requireLocal(options);
+      return this.ensureProfileImage(options);
+    });
+  }
+
+  async listImages(
+    options: ClientOperationOptions & { readonly includeUnowned?: boolean } = {},
+  ): Promise<Awaited<ReturnType<Host["listImages"]>>> {
+    return this.withOperation("listImages", undefined, options, async () => {
+      await this.requireLocal(options);
+      return this.host.listImages({
+        ...(options.signal !== undefined ? { signal: options.signal } : {}),
+        ...(options.includeUnowned !== undefined ? { includeUnowned: options.includeUnowned } : {}),
+      });
+    });
+  }
+
+  async removeImage(
+    reference: string,
+    options: ClientOperationOptions & { readonly force?: boolean } = {},
+  ): Promise<void> {
+    return this.withOperation("removeImage", undefined, options, async () => {
+      await this.requireLocal(options);
+      await this.host.removeImage(reference, {
+        ...(options.signal !== undefined ? { signal: options.signal } : {}),
+        ...(options.force !== undefined ? { force: options.force } : {}),
+      });
+    });
+  }
+
+  async listStaleImageWorkspaces(
+    options: ClientOperationOptions & { readonly workspaceRoot?: string } = {},
+  ): Promise<Awaited<ReturnType<Host["listStaleImageWorkspaces"]>>> {
+    return this.withOperation("listStaleImageWorkspaces", undefined, options, async () => {
+      await this.requireLocal(options);
+      return this.host.listStaleImageWorkspaces({
+        ...(options.signal !== undefined ? { signal: options.signal } : {}),
+        ...(options.workspaceRoot !== undefined ? { workspaceRoot: options.workspaceRoot } : {}),
+      });
     });
   }
 
@@ -286,12 +362,64 @@ class HostSboxClient implements SboxClient {
   }
 
   private async resolveIntent(options: ProfileOperationOptions) {
+    const selected = selectProfile(this.project, options.profile);
+    let resolvedImage: string | undefined;
+    if (isBuildProfile(selected.profile)) {
+      const image = await this.ensureProfileImage(options);
+      resolvedImage = image.reference;
+    }
     return resolveCreateIntent({
       project: this.project,
       ...(options.profile !== undefined ? { profile: options.profile } : {}),
       ...(options.instance !== undefined ? { instance: options.instance } : {}),
       ...(options.env !== undefined ? { env: options.env } : {}),
+      ...(resolvedImage !== undefined ? { resolvedImage } : {}),
       external: this.externalContext(options),
+    });
+  }
+
+  /**
+   * Resolve create intent using predicted image identity only — no Docker/msb
+   * mutation. Used by `up` so existing sandboxes can start without building.
+   */
+  private async resolveIntentPredictingImage(options: ProfileOperationOptions) {
+    const selected = selectProfile(this.project, options.profile);
+    let resolvedImage: string | undefined;
+    const needsImageEnsure = isBuildProfile(selected.profile);
+    if (needsImageEnsure) {
+      const predicted = await resolveImageIdentityInputs({
+        project: this.project,
+        ...(options.profile !== undefined ? { profile: options.profile } : {}),
+        external: this.externalContext(options),
+      });
+      const identity = await computeGeneratedImageIdentity({
+        ...predicted.inputs,
+        ...(options.signal !== undefined ? { signal: options.signal } : {}),
+      });
+      resolvedImage = identity.nativeReference;
+    }
+    const intent = await resolveCreateIntent({
+      project: this.project,
+      ...(options.profile !== undefined ? { profile: options.profile } : {}),
+      ...(options.instance !== undefined ? { instance: options.instance } : {}),
+      ...(options.env !== undefined ? { env: options.env } : {}),
+      ...(resolvedImage !== undefined ? { resolvedImage } : {}),
+      external: this.externalContext(options),
+    });
+    return { ...intent, needsImageEnsure };
+  }
+
+  private async ensureProfileImage(options: ClientBuildOptions): Promise<HostImageInspection> {
+    const resolved = await resolveEnsureImageRequest({
+      project: this.project,
+      ...(options.profile !== undefined ? { profile: options.profile } : {}),
+      external: this.externalContext(options),
+      ...(options.force === true ? { force: true } : {}),
+    });
+    return this.host.ensureImage(resolved.request, {
+      ...(options.signal !== undefined ? { signal: options.signal } : {}),
+      ...(options.onProgress !== undefined ? { onProgress: options.onProgress } : {}),
+      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
     });
   }
 

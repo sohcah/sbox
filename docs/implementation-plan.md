@@ -228,7 +228,8 @@ Implement:
   and special-file rejection;
 - deterministic packaging and identity over algorithm version, normalized
   recipe, platform, paths, types, bytes/link targets, and executable bits;
-- generated native image naming and reserved identity-label validation;
+- generated native image naming and reserved identity evidence validation
+  (OCI labels when present; ENV-only when labels are wholly absent after load);
 - exact native existence check, in-process coalescing, ordinary reuse, and
   explicit force behavior;
 - Docker CLI build using ordinary Docker cache, owner-only BuildKit secret
@@ -253,6 +254,48 @@ Tests and evidence:
 
 Exit condition: a build-backed profile automatically becomes a usable local
 Microsandbox image without a registry or authoritative cache.
+
+### Phase 4 implementation notes
+
+- Profiles are mutually exclusive: `image` (existing OCI/native ref) or `build`
+  (`context`, optional in-context `dockerfile` defaulting to `Dockerfile`,
+  optional `target` / `args` / BuildKit `secrets` / `includeGit`).
+- Context discovery uses the exact-pinned `ignore@7.0.5` matcher for
+  `.dockerignore` and Dockerfile-specific `*.dockerignore`, excludes `.git` by
+  default, records safe relative symlinks without following them, and rejects
+  absolute/escaping links and special files.
+- Identity algorithm version `1` hashes recipe bytes, platform, target, ordinary
+  args, secret ids (never values), selected paths/kinds/bytes/link targets, and
+  permission bits (`mode & 0o777`). Absolute paths and timestamps are excluded.
+- Generated native refs are `sbox-img:sha256-<64-hex>`. Ownership requires
+  reserved identity evidence. **Product decision (Phase 4 amendment):** stamp
+  both reserved OCI labels and reserved ENV (`DEV_SOHCAH_SBOX_*`) after Docker
+  build. After load, complete ENV-only ownership is accepted only when reserved
+  OCI labels are entirely absent (compatibility with Microsandbox `0.6.6`
+  `msb image load`, which drops labels but preserves ENV). Any present reserved
+  label or ENV marker that is partial, mismatched, or contradictory fails
+  closed. A matching tag is never ownership evidence. Unowned/mismatched
+  natives at the generated ref are never deleted by ensure/force/remove.
+- Host gained `ensureImage` / `listImages` / `removeImage` /
+  `listStaleImageWorkspaces`. Builds use Docker CLI argv (no shell), owner-only
+  secret files, ownership stamp, `docker save`, and `msb image load --input
+  --tag`. Progress is phase-only (no raw Docker lines); progress callbacks are
+  observational. Workspaces are marked under `~/.sbox/image-workspaces` (or
+  `SBOX_IMAGE_WORKSPACE_ROOT`); cleanup failures fail the operation rather than
+  being swallowed.
+- Identical concurrent builds coalesce in-process with per-subscriber progress
+  and timeout; cancelling/timing out one waiter does not abort shared work while
+  others remain. FakeHost uses the real discovery/identity path with an
+  in-memory publish seam.
+- `up` predicts the generated image identity without Docker mutation, looks up
+  the sandbox first, and only ensures/builds when the sandbox is absent.
+- CLI: `sbox build [profile] [--force]` (requires a `build:` profile) streams
+  phase progress on stderr (NDJSON with `--json`); `sbox image list`,
+  `sbox image remove <exact-image> [--force]`.
+- Real acceptance: `packages/sbox/test/image.acceptance.test.ts` under
+  `pnpm test:acceptance` (isolated `MSB_HOME` + workspace root; requires Docker
+  and Microsandbox). Offline reuse is asserted by hiding `docker` on `PATH`
+  after the first build.
 
 ## Phase 5: Default-deny networking and curated secrets
 

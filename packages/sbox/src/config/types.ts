@@ -20,9 +20,32 @@ export interface VolumeDeclaration {
   readonly size: string;
 }
 
-export interface ProfileConfig {
-  /** Existing OCI/native image reference. Dockerfile builds arrive in Phase 4. */
-  readonly image: string;
+/**
+ * Dockerfile-backed build definition. Mutually exclusive with `image`.
+ * Paths are config-relative until resolved against the config directory.
+ */
+export interface ImageBuildConfig {
+  /** Build context root (directory). */
+  readonly context: string;
+  /**
+   * Dockerfile path relative to context. Defaults to `Dockerfile`.
+   * Must stay inside the context (no absolute path, no `..`).
+   */
+  readonly dockerfile?: string;
+  /** Optional Docker build target stage. */
+  readonly target?: string;
+  /** Ordinary build arguments (not secrets). */
+  readonly args?: Readonly<Record<string, ConfigValue>>;
+  /**
+   * BuildKit secrets keyed by secret id. Values resolve from external refs only;
+   * resolved secret values never enter safe DTOs or identity.
+   */
+  readonly secrets?: Readonly<Record<string, ExternalValueRef>>;
+  /** When true, `.git` may be included if not otherwise ignored. Default false. */
+  readonly includeGit?: boolean;
+}
+
+export interface ProfileCommon {
   readonly cpus?: number;
   readonly memoryMiB?: number;
   readonly workdir?: string;
@@ -35,6 +58,20 @@ export interface ProfileConfig {
   /** Native idle timeout in seconds. */
   readonly idleTimeoutSecs?: number | null;
 }
+
+/** Existing OCI/native image reference profile. */
+export type ImageReferenceProfile = ProfileCommon & {
+  readonly image: string;
+  readonly build?: undefined;
+};
+
+/** Dockerfile-backed build profile. */
+export type ImageBuildProfile = ProfileCommon & {
+  readonly build: ImageBuildConfig;
+  readonly image?: undefined;
+};
+
+export type ProfileConfig = ImageReferenceProfile | ImageBuildProfile;
 
 export interface ProjectConfig {
   readonly version: 1;
@@ -71,6 +108,16 @@ export interface ConfigurationIssue {
   readonly message: string;
 }
 
+/** Redacted projection of a build definition (no secret/arg values). */
+export interface SafeImageBuildConfig {
+  readonly context: string;
+  readonly dockerfile: string;
+  readonly target?: string;
+  readonly args: Readonly<Record<string, "literal" | "env" | "file" | "invocation">>;
+  readonly secrets: Readonly<Record<string, "env" | "file" | "invocation">>;
+  readonly includeGit: boolean;
+}
+
 /** Redacted, inspection-safe projection of a validated project config. */
 export interface SafeProjectConfig {
   readonly version: 1;
@@ -82,7 +129,8 @@ export interface SafeProjectConfig {
     Record<
       string,
       {
-        readonly image: string;
+        readonly image?: string;
+        readonly build?: SafeImageBuildConfig;
         readonly cpus?: number;
         readonly memoryMiB?: number;
         readonly workdir?: string;
@@ -111,4 +159,12 @@ export interface SafeUserConfig {
         }
     >
   >;
+}
+
+export function isBuildProfile(profile: ProfileConfig): profile is ImageBuildProfile {
+  return profile.build !== undefined;
+}
+
+export function isImageReferenceProfile(profile: ProfileConfig): profile is ImageReferenceProfile {
+  return typeof profile.image === "string";
 }

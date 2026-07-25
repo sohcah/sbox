@@ -127,16 +127,22 @@ export type {
   ConfigValue,
   ConfigurationIssue,
   ExternalValueRef,
+  ImageBuildConfig,
+  ImageBuildProfile,
+  ImageReferenceProfile,
   LocalTargetConfig,
   ProfileConfig,
   ProjectConfig,
   RemoteTargetConfig,
+  SafeImageBuildConfig,
   SafeProjectConfig,
   SafeUserConfig,
   TargetConfig,
   UserConfig,
   VolumeDeclaration,
 } from "./config/types.js";
+
+export { isBuildProfile, isImageReferenceProfile } from "./config/types.js";
 
 export {
   parseProjectConfig,
@@ -147,6 +153,7 @@ export {
   tryParseYamlProjectInput,
   toSafeProjectConfig,
   toSafeUserConfig,
+  toSafeBuildConfig,
   throwAccumulatedValidation,
 } from "./config/validate.js";
 
@@ -181,11 +188,26 @@ export type {
   ProfileOperationOptions,
   ClientOperationOptions,
   ClientListOptions,
+  ClientBuildOptions,
 } from "./client/client.js";
 
 export { createSboxClient } from "./client/client.js";
 export { createSboxClientFromYaml, type YamlSboxClientOptions } from "./client/from-yaml.js";
 export type { SandboxHandle } from "./client/handle.js";
+
+export type {
+  HostImageSummary,
+  HostImageInspection,
+  HostEnsureImageRequest,
+  HostEnsureImageOptions,
+  HostListImagesOptions,
+  HostRemoveImageOptions,
+  ImageBuildProgressEvent,
+  ImageBuildPhase,
+  ImageContentDigest,
+  StaleImageWorkspace,
+  HostListStaleImageWorkspacesOptions,
+} from "./image/types.js";
 
 /** Documented CLI operational exit codes (the runner itself is not exported). */
 export {

@@ -8,6 +8,7 @@ import type { Host } from "../host.js";
 import type { Logger } from "../logging.js";
 import { runConfigShow, runConfigValidate } from "./commands/config.js";
 import { runExec, runShell } from "./commands/exec-shell.js";
+import { runBuild, runImageList, runImageRemove } from "./commands/image.js";
 import { runInit } from "./commands/init.js";
 import { runInspect, runList, runRemove, runStop, runUp } from "./commands/lifecycle.js";
 import type { CliContext, CliGlobalFlags, CliIo } from "./context.js";
@@ -28,11 +29,14 @@ Usage:
   sbox init [--force] [--project <slug>]
   sbox config validate
   sbox config show
+  sbox build [profile] [--force]
   sbox up [profile]
   sbox list
   sbox inspect <profile>
   sbox stop <profile>
   sbox remove <profile>
+  sbox image list
+  sbox image remove <exact-image> [--force]
   sbox exec [profile] [--cwd <path>] [--user <name>] [--stream] -- <argv...>
   sbox shell [profile] [--cwd <path>] [--user <name>] [--stream] -- <script>
 
@@ -144,6 +148,26 @@ export async function runCli(options: RunCliOptions): Promise<number> {
       }
       case "up":
         return await runUp(ctx, rest[0]);
+      case "build":
+        return await runBuild(ctx, {
+          ...(rest[0] !== undefined ? { profile: rest[0] } : {}),
+          force: values["force"] === true,
+        });
+      case "image": {
+        const sub = rest[0];
+        if (sub === "list") {
+          return await runImageList(ctx);
+        }
+        if (sub === "remove") {
+          return await runImageRemove(ctx, {
+            ...(rest[1] !== undefined ? { reference: rest[1] } : {}),
+            force: values["force"] === true,
+          });
+        }
+        throw SboxError.validation('Expected "image list" or "image remove <exact-image>".', {
+          details: { path: "argv" },
+        });
+      }
       case "list":
         return await runList(ctx);
       case "inspect": {

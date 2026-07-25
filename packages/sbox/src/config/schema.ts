@@ -42,11 +42,46 @@ const volumeDeclarationSchema = z.strictObject({
   size: binarySizeSchema,
 });
 
-/**
- * Typed profile schema (primary API). Memory and durations are numeric seconds/MiB.
- */
-export const profileConfigSchema = z.strictObject({
-  image: z.string().min(1),
+const buildkitSecretIdSchema = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z_][A-Za-z0-9_.-]*$/, {
+    error: "Expected a BuildKit secret id matching [A-Za-z_][A-Za-z0-9_.-]*.",
+  });
+
+const buildArgNameSchema = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, {
+    error: "Expected a build-arg name matching [A-Za-z_][A-Za-z0-9_]*.",
+  });
+
+/** Dockerfile path relative to context: no absolute path, no escaping. */
+function isInContextDockerfilePath(value: string): boolean {
+  if (value.length === 0 || value.includes("\0")) {
+    return false;
+  }
+  if (value.startsWith("/") || value.startsWith("\\") || /^[A-Za-z]:[\\/]/.test(value)) {
+    return false;
+  }
+  const parts = value.replace(/\\/g, "/").split("/");
+  return !parts.some((part) => part === "" || part === "." || part === "..");
+}
+
+const dockerfilePathSchema = z.string().refine((value) => isInContextDockerfilePath(value), {
+  error: "Dockerfile must be a relative path inside the build context.",
+});
+
+export const imageBuildConfigSchema = z.strictObject({
+  context: z.string().min(1),
+  dockerfile: dockerfilePathSchema.optional(),
+  target: z.string().min(1).optional(),
+  args: z.record(buildArgNameSchema, configValueSchema).optional(),
+  secrets: z.record(buildkitSecretIdSchema, externalValueRefSchema).optional(),
+  includeGit: z.boolean().optional(),
+});
+
+const profileCommonFields = {
   cpus: z.number().int().positive().optional(),
   memoryMiB: z.number().int().positive().optional(),
   workdir: absoluteGuestPathSchema.optional(),
@@ -56,7 +91,54 @@ export const profileConfigSchema = z.strictObject({
   environment: z.record(envVarNameSchema, configValueSchema).optional(),
   maxDurationSecs: z.number().int().positive().nullable().optional(),
   idleTimeoutSecs: z.number().int().positive().nullable().optional(),
-});
+} as const;
+
+function refineImageOrBuild(
+  value: { readonly image?: string | undefined; readonly build?: unknown },
+  ctx: z.RefinementCtx,
+  pathPrefix: readonly (string | number)[] = [],
+): void {
+  const hasImage = value.image !== undefined;
+  const hasBuild = value.build !== undefined;
+  if (hasImage && hasBuild) {
+    ctx.addIssue({
+      code: "custom",
+      path: [...pathPrefix, "image"],
+      message: 'Specify only one of "image" or "build".',
+    });
+    ctx.addIssue({
+      code: "custom",
+      path: [...pathPrefix, "build"],
+      message: 'Specify only one of "image" or "build".',
+    });
+    return;
+  }
+  if (!hasImage && !hasBuild) {
+    ctx.addIssue({
+      code: "custom",
+      path: [...pathPrefix, "image"],
+      message: 'Specify exactly one of "image" or "build".',
+    });
+    ctx.addIssue({
+      code: "custom",
+      path: [...pathPrefix, "build"],
+      message: 'Specify exactly one of "image" or "build".',
+    });
+  }
+}
+
+/**
+ * Typed profile schema (primary API). Memory and durations are numeric seconds/MiB.
+ */
+export const profileConfigSchema = z
+  .strictObject({
+    image: z.string().min(1).optional(),
+    build: imageBuildConfigSchema.optional(),
+    ...profileCommonFields,
+  })
+  .superRefine((value, ctx) => {
+    refineImageOrBuild(value, ctx);
+  });
 
 export const projectConfigSchema = z
   .strictObject({
@@ -115,21 +197,26 @@ export const userConfigSchema = z
  * YAML-oriented profile input. Accepts human memory/duration strings that the
  * YAML adapter normalizes into the typed model.
  */
-export const yamlProfileInputSchema = z.strictObject({
-  image: z.string().min(1),
-  cpus: z.number().int().positive().optional(),
-  memoryMiB: z.number().int().positive().optional(),
-  memory: binarySizeSchema.optional(),
-  workdir: absoluteGuestPathSchema.optional(),
-  user: z.string().min(1).optional(),
-  shell: absoluteGuestPathSchema.optional(),
-  hostname: z.string().min(1).optional(),
-  environment: z.record(envVarNameSchema, configValueSchema).optional(),
-  maxDurationSecs: z.number().int().positive().nullable().optional(),
-  idleTimeoutSecs: z.number().int().positive().nullable().optional(),
-  maxDuration: durationSchema.nullable().optional(),
-  idleTimeout: durationSchema.nullable().optional(),
-});
+export const yamlProfileInputSchema = z
+  .strictObject({
+    image: z.string().min(1).optional(),
+    build: imageBuildConfigSchema.optional(),
+    cpus: z.number().int().positive().optional(),
+    memoryMiB: z.number().int().positive().optional(),
+    memory: binarySizeSchema.optional(),
+    workdir: absoluteGuestPathSchema.optional(),
+    user: z.string().min(1).optional(),
+    shell: absoluteGuestPathSchema.optional(),
+    hostname: z.string().min(1).optional(),
+    environment: z.record(envVarNameSchema, configValueSchema).optional(),
+    maxDurationSecs: z.number().int().positive().nullable().optional(),
+    idleTimeoutSecs: z.number().int().positive().nullable().optional(),
+    maxDuration: durationSchema.nullable().optional(),
+    idleTimeout: durationSchema.nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    refineImageOrBuild(value, ctx);
+  });
 
 export const yamlProjectInputSchema = z
   .strictObject({

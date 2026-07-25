@@ -34,6 +34,9 @@ importers:
       cbor-x:
         specifier: 1.6.0
         version: 1.6.0
+      ignore:
+        specifier: 7.0.5
+        version: 7.0.5
       microsandbox:
         specifier: 0.6.6
         version: 0.6.6(patch_hash=46765fc011eeca216fd5a50c5b2c566f2916ad1d696204696fdc62db0961d634)
@@ -665,6 +668,10 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  ignore@7.0.5:
+    resolution: {integrity: sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg==}
+    engines: {node: '>= 4'}
 
   lightningcss-android-arm64@1.33.0:
     resolution: {integrity: sha512-gEpRTalKdosp4Bb8qWtc2iOgE5SeIHlpS1up9bFq2wAyYhl1UdTObYiHe98zEM9SQvSoqQZ1IQD0JNpg3Ml5pg==}
@@ -1328,6 +1335,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  ignore@7.0.5: {}
 
   lightningcss-android-arm64@1.33.0:
     optional: true

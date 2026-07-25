@@ -138,6 +138,14 @@ Reserved Microsandbox labels record `sbox` ownership, project, instance,
 profile, generated-image identity, and maintenance purpose. User labels are not
 exposed in `0.1`.
 
+Generated images additionally stamp reserved OCI config labels and reserved
+image-config ENV markers (`DEV_SOHCAH_SBOX_*`). When the native load path
+preserves OCI labels, those labels are authoritative. When OCI labels are
+wholly absent after load (as with pinned Microsandbox `0.6.6` `msb image load`),
+complete matching ENV markers are accepted as ownership evidence. Any present
+reserved label or ENV marker that is partial, mismatched, or contradictory fails
+closed. A generated reference name alone is never ownership evidence.
+
 On uncertain creation, inspect the exact native name:
 
 - labels and immutable configuration match: return the resource;
@@ -190,7 +198,8 @@ The deterministic identity contains:
 
 It excludes timestamps, ownership, secret values, and other host-specific
 metadata. A matching native generated image must carry the expected reserved
-identity; a conflict fails safely.
+identity evidence (OCI labels when present; otherwise complete reserved ENV
+markers when labels are wholly absent after load). A conflict fails safely.
 
 ### Build workflow
 
@@ -200,8 +209,9 @@ identity; a conflict fails safely.
 4. Reuse it when native inspection confirms a match unless force was requested.
 5. Build using the Docker CLI/daemon and ordinary Docker cache.
 6. Supply secrets only via owner-only files and BuildKit `--secret`.
-7. Export and load directly into Microsandbox without a registry.
-8. Validate the loaded identity and clean the workspace in `finally`.
+7. Stamp reserved OCI labels and reserved ENV ownership markers, then export
+   and load directly into Microsandbox without a registry.
+8. Validate the loaded identity evidence and clean the workspace in `finally`.
 
 One process may coalesce identical builds in memory. Unrelated processes do
 not use durable or cross-process build locks. Failed builds leave no workflow

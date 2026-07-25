@@ -89,6 +89,25 @@ class RecordingHost implements Host {
   capabilities(options?: OperationOptions) {
     return this.inner.capabilities(this.record(options));
   }
+  ensureImage(
+    request: Parameters<Host["ensureImage"]>[0],
+    options?: Parameters<Host["ensureImage"]>[1],
+  ) {
+    this.record(options);
+    return this.inner.ensureImage(request, options);
+  }
+  listImages(options?: Parameters<Host["listImages"]>[0]) {
+    this.record(options);
+    return this.inner.listImages(options);
+  }
+  removeImage(reference: string, options?: Parameters<Host["removeImage"]>[1]) {
+    this.record(options);
+    return this.inner.removeImage(reference, options);
+  }
+  listStaleImageWorkspaces(options?: Parameters<Host["listStaleImageWorkspaces"]>[0]) {
+    this.record(options);
+    return this.inner.listStaleImageWorkspaces(options);
+  }
   execArgv(
     request: HostExecArgvRequest,
     options?: HostCollectedExecOptions,

@@ -4,12 +4,15 @@
 
 import type {
   ConfigurationIssue,
+  ImageBuildConfig,
   ProfileConfig,
   ProjectConfig,
+  SafeImageBuildConfig,
   SafeProjectConfig,
   SafeUserConfig,
   UserConfig,
   ExternalValueRef,
+  ConfigValue,
 } from "./types.js";
 import { projectConfigSchema, userConfigSchema, yamlProjectInputSchema } from "./schema.js";
 import { parseBinarySizeToMiB, parseDurationToSecs } from "./scalars.js";
@@ -89,6 +92,23 @@ export function tryParseUserConfig(
   return { ok: true, value: freezeUserConfig(normalizeUserShape(parsed.value)) };
 }
 
+type YamlProfileInput = {
+  readonly image?: string;
+  readonly build?: ImageBuildConfig;
+  readonly cpus?: number;
+  readonly memoryMiB?: number;
+  readonly memory?: string;
+  readonly workdir?: string;
+  readonly user?: string;
+  readonly shell?: string;
+  readonly hostname?: string;
+  readonly environment?: Readonly<Record<string, string | ExternalValueRef>>;
+  readonly maxDurationSecs?: number | null;
+  readonly idleTimeoutSecs?: number | null;
+  readonly maxDuration?: string | null;
+  readonly idleTimeout?: string | null;
+};
+
 /** Normalize YAML input into the typed project model. */
 function normalizeYamlProjectInput(input: {
   readonly version: 1;
@@ -96,26 +116,7 @@ function normalizeYamlProjectInput(input: {
   readonly defaultProfile?: string;
   readonly target?: string;
   readonly volumes?: Readonly<Record<string, { readonly size: string }>>;
-  readonly profiles: Readonly<
-    Record<
-      string,
-      {
-        readonly image: string;
-        readonly cpus?: number;
-        readonly memoryMiB?: number;
-        readonly memory?: string;
-        readonly workdir?: string;
-        readonly user?: string;
-        readonly shell?: string;
-        readonly hostname?: string;
-        readonly environment?: Readonly<Record<string, string | ExternalValueRef>>;
-        readonly maxDurationSecs?: number | null;
-        readonly idleTimeoutSecs?: number | null;
-        readonly maxDuration?: string | null;
-        readonly idleTimeout?: string | null;
-      }
-    >
-  >;
+  readonly profiles: Readonly<Record<string, YamlProfileInput>>;
 }): ProjectConfig {
   const profiles: Record<string, ProfileConfig> = {};
   for (const [name, profile] of Object.entries(input.profiles)) {
@@ -141,8 +142,7 @@ function normalizeYamlProjectInput(input: {
             ? null
             : parseDurationToSecs(profile.idleTimeout, `profiles.${name}.idleTimeout`);
 
-    profiles[name] = {
-      image: profile.image,
+    const common = {
       ...(profile.cpus !== undefined ? { cpus: profile.cpus } : {}),
       ...(memoryMiB !== undefined ? { memoryMiB } : {}),
       ...(profile.workdir !== undefined ? { workdir: profile.workdir } : {}),
@@ -153,6 +153,18 @@ function normalizeYamlProjectInput(input: {
       ...(maxDurationSecs !== undefined ? { maxDurationSecs } : {}),
       ...(idleTimeoutSecs !== undefined ? { idleTimeoutSecs } : {}),
     };
+
+    if (profile.build !== undefined) {
+      profiles[name] = {
+        build: normalizeBuildConfig(profile.build),
+        ...common,
+      };
+    } else {
+      profiles[name] = {
+        image: profile.image!,
+        ...common,
+      };
+    }
   }
 
   return freezeProjectConfig({
@@ -163,6 +175,17 @@ function normalizeYamlProjectInput(input: {
     ...(input.volumes !== undefined ? { volumes: { ...input.volumes } } : {}),
     profiles,
   });
+}
+
+function normalizeBuildConfig(build: ImageBuildConfig): ImageBuildConfig {
+  return {
+    context: build.context,
+    ...(build.dockerfile !== undefined ? { dockerfile: build.dockerfile } : {}),
+    ...(build.target !== undefined ? { target: build.target } : {}),
+    ...(build.args !== undefined ? { args: { ...build.args } } : {}),
+    ...(build.secrets !== undefined ? { secrets: { ...build.secrets } } : {}),
+    ...(build.includeGit !== undefined ? { includeGit: build.includeGit } : {}),
+  };
 }
 
 export function parseYamlProjectInput(input: unknown): ProjectConfig {
@@ -214,28 +237,15 @@ export function tryParseYamlProjectInput(
 }
 
 export function toSafeProjectConfig(config: ProjectConfig): SafeProjectConfig {
-  const profiles: Record<
-    string,
-    {
-      readonly image: string;
-      readonly cpus?: number;
-      readonly memoryMiB?: number;
-      readonly workdir?: string;
-      readonly user?: string;
-      readonly shell?: string;
-      readonly hostname?: string;
-      readonly environment: Readonly<Record<string, "literal" | "env" | "file" | "invocation">>;
-      readonly maxDurationSecs?: number | null;
-      readonly idleTimeoutSecs?: number | null;
-    }
-  > = {};
+  const profiles: Record<string, SafeProjectConfig["profiles"][string]> = {};
   for (const [name, profile] of Object.entries(config.profiles)) {
     const environment: Record<string, "literal" | "env" | "file" | "invocation"> = {};
     for (const [key, value] of Object.entries(profile.environment ?? {})) {
       environment[key] = classifyConfigValue(value);
     }
     profiles[name] = {
-      image: profile.image,
+      ...(profile.image !== undefined ? { image: profile.image } : {}),
+      ...(profile.build !== undefined ? { build: toSafeBuildConfig(profile.build) } : {}),
       ...(profile.cpus !== undefined ? { cpus: profile.cpus } : {}),
       ...(profile.memoryMiB !== undefined ? { memoryMiB: profile.memoryMiB } : {}),
       ...(profile.workdir !== undefined ? { workdir: profile.workdir } : {}),
@@ -258,6 +268,25 @@ export function toSafeProjectConfig(config: ProjectConfig): SafeProjectConfig {
     ...(config.target !== undefined ? { target: config.target } : {}),
     volumes: { ...config.volumes },
     profiles,
+  };
+}
+
+export function toSafeBuildConfig(build: ImageBuildConfig): SafeImageBuildConfig {
+  const args: Record<string, "literal" | "env" | "file" | "invocation"> = {};
+  for (const [key, value] of Object.entries(build.args ?? {})) {
+    args[key] = classifyConfigValue(value);
+  }
+  const secrets: Record<string, "env" | "file" | "invocation"> = {};
+  for (const [key, value] of Object.entries(build.secrets ?? {})) {
+    secrets[key] = classifyExternalRef(value);
+  }
+  return {
+    context: build.context,
+    dockerfile: build.dockerfile ?? "Dockerfile",
+    ...(build.target !== undefined ? { target: build.target } : {}),
+    args,
+    secrets,
+    includeGit: build.includeGit === true,
   };
 }
 
@@ -289,9 +318,7 @@ export function toSafeUserConfig(config: UserConfig): SafeUserConfig {
   };
 }
 
-function classifyConfigValue(
-  value: string | ExternalValueRef,
-): "literal" | "env" | "file" | "invocation" {
+function classifyConfigValue(value: ConfigValue): "literal" | "env" | "file" | "invocation" {
   if (typeof value === "string") {
     return "literal";
   }
@@ -325,7 +352,13 @@ function normalizeProjectShape(value: {
 } {
   const profiles: Record<string, ProfileConfig> = {};
   for (const [name, profile] of Object.entries(value.profiles)) {
-    profiles[name] = stripUndefined(profile) as unknown as ProfileConfig;
+    const cleaned = stripUndefined(profile);
+    if (cleaned["build"] !== undefined && typeof cleaned["build"] === "object") {
+      cleaned["build"] = normalizeBuildConfig(
+        stripUndefined(cleaned["build"] as Record<string, unknown>) as unknown as ImageBuildConfig,
+      );
+    }
+    profiles[name] = cleaned as unknown as ProfileConfig;
   }
   return {
     version: 1,
@@ -377,12 +410,25 @@ function freezeProjectConfig(config: {
 }): ProjectConfig {
   const profiles: Record<string, ProfileConfig> = {};
   for (const [name, profile] of Object.entries(config.profiles)) {
+    const frozenBuild =
+      profile.build === undefined
+        ? undefined
+        : Object.freeze({
+            ...profile.build,
+            ...(profile.build.args !== undefined
+              ? { args: Object.freeze({ ...profile.build.args }) }
+              : {}),
+            ...(profile.build.secrets !== undefined
+              ? { secrets: Object.freeze({ ...profile.build.secrets }) }
+              : {}),
+          });
     profiles[name] = Object.freeze({
       ...profile,
+      ...(frozenBuild !== undefined ? { build: frozenBuild } : {}),
       ...(profile.environment !== undefined
         ? { environment: Object.freeze({ ...profile.environment }) }
         : {}),
-    });
+    }) as ProfileConfig;
   }
   return Object.freeze({
     version: 1 as const,

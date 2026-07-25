@@ -1,10 +1,20 @@
 /**
- * Host deep seam: lifecycle plus process, PTY, and transfer.
+ * Host deep seam: lifecycle, process/PTY/transfer, and generated images.
  *
- * Image/volume methods arrive in later phases on this same contract.
+ * Volume methods arrive in later phases on this same contract.
  */
 
 import type { SandboxIdentity } from "./identity.js";
+import type {
+  HostEnsureImageOptions,
+  HostEnsureImageRequest,
+  HostImageInspection,
+  HostImageSummary,
+  HostListImagesOptions,
+  HostListStaleImageWorkspacesOptions,
+  HostRemoveImageOptions,
+  StaleImageWorkspace,
+} from "./image/types.js";
 import type {
   HostCollectedExecOptions,
   HostPtyOptions,
@@ -55,6 +65,16 @@ export interface Host extends AsyncDisposable {
   stop(identity: SandboxIdentity, options?: OperationOptions): Promise<SandboxInspection>;
   remove(identity: SandboxIdentity, options?: OperationOptions): Promise<void>;
   capabilities(options?: OperationOptions): Promise<HostCapabilities>;
+
+  ensureImage(
+    request: HostEnsureImageRequest,
+    options?: HostEnsureImageOptions,
+  ): Promise<HostImageInspection>;
+  listImages(options?: HostListImagesOptions): Promise<readonly HostImageSummary[]>;
+  removeImage(reference: string, options?: HostRemoveImageOptions): Promise<void>;
+  listStaleImageWorkspaces(
+    options?: HostListStaleImageWorkspacesOptions,
+  ): Promise<readonly StaleImageWorkspace[]>;
 
   execArgv(
     request: HostExecArgvRequest,

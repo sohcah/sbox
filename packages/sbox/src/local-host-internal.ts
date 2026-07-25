@@ -13,6 +13,30 @@ import {
   type NativeSandboxName,
   type SandboxIdentity,
 } from "./identity.js";
+import { ensureImage } from "./image/ensure.js";
+import {
+  formatImageContentDigest,
+  IMAGE_IDENTITY_ALGORITHM_VERSION,
+  inspectImageOwnershipEvidence,
+  parseNativeImageReference,
+} from "./image/naming.js";
+import {
+  nativeImageGet,
+  nativeImageList,
+  nativeImageRemove,
+  toHostImageSummary,
+} from "./image/native-images.js";
+import type {
+  HostEnsureImageOptions,
+  HostEnsureImageRequest,
+  HostImageInspection,
+  HostImageSummary,
+  HostListImagesOptions,
+  HostListStaleImageWorkspacesOptions,
+  HostRemoveImageOptions,
+  StaleImageWorkspace,
+} from "./image/types.js";
+import { listStaleImageWorkspaces } from "./image/workspace.js";
 import { createRedactingLogger, safeLog, silentLogger, type Logger } from "./logging.js";
 import { createMicrosandboxRuntime } from "./microsandbox-runtime.js";
 import type { NativeLiveHandle, NativeRuntime, NativeSandboxRecord } from "./native-runtime.js";
@@ -274,6 +298,78 @@ class LocalHost implements Host {
         notes: probe.notes,
       };
     });
+  }
+
+  async ensureImage(
+    request: HostEnsureImageRequest,
+    options?: HostEnsureImageOptions,
+  ): Promise<HostImageInspection> {
+    return this.withOperation("ensureImage", undefined, options, async () =>
+      ensureImage(request, options ?? {}),
+    );
+  }
+
+  async listImages(options?: HostListImagesOptions): Promise<readonly HostImageSummary[]> {
+    return this.withOperation("listImages", undefined, options, async () => {
+      const all = await nativeImageList();
+      const summaries: HostImageSummary[] = [];
+      for (const evidence of all) {
+        const summary = toHostImageSummary(evidence);
+        if (summary !== null) {
+          summaries.push(summary);
+          continue;
+        }
+        if (options?.includeUnowned === true && parseNativeImageReference(evidence.reference)) {
+          summaries.push({
+            reference: evidence.reference,
+            contentIdentity: formatImageContentDigest(
+              parseNativeImageReference(evidence.reference)!.digestHex,
+            ),
+            algorithmVersion: IMAGE_IDENTITY_ALGORITHM_VERSION,
+            owned: false,
+          });
+        }
+      }
+      return summaries;
+    });
+  }
+
+  async removeImage(reference: string, options?: HostRemoveImageOptions): Promise<void> {
+    return this.withOperation("removeImage", undefined, options, async () => {
+      const parsed = parseNativeImageReference(reference);
+      if (parsed === undefined) {
+        throw SboxError.validation(
+          "Image removal requires an exact generated sbox image reference.",
+          {
+            details: { path: "reference" },
+          },
+        );
+      }
+      const evidence = await nativeImageGet(reference);
+      if (evidence === null) {
+        throw SboxError.notFound("Native image was not found.", { details: { reference } });
+      }
+      const ownership = inspectImageOwnershipEvidence(
+        evidence.labels,
+        evidence.env,
+        parsed.digestHex,
+      );
+      if (!ownership.ok) {
+        throw SboxError.ownershipConflict(
+          "Refusing to remove an image that is not an owned sbox generated image.",
+          { details: { reference, reason: ownership.reason } },
+        );
+      }
+      await nativeImageRemove(reference, options?.force === true);
+    });
+  }
+
+  async listStaleImageWorkspaces(
+    options?: HostListStaleImageWorkspacesOptions,
+  ): Promise<readonly StaleImageWorkspace[]> {
+    return this.withOperation("listStaleImageWorkspaces", undefined, options, async () =>
+      listStaleImageWorkspaces(options?.workspaceRoot),
+    );
   }
 
   async execArgv(

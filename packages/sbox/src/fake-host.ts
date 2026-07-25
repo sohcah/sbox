@@ -19,6 +19,26 @@ import {
   type NativeSandboxName,
   type SandboxIdentity,
 } from "./identity.js";
+import { ensureImage, type EnsureImagePorts } from "./image/ensure.js";
+import {
+  buildImageOwnershipEnv,
+  buildImageOwnershipLabels,
+  formatImageContentDigest,
+  IMAGE_IDENTITY_ALGORITHM_VERSION,
+  inspectImageOwnershipEvidence,
+  parseNativeImageReference,
+} from "./image/naming.js";
+import type {
+  HostEnsureImageOptions,
+  HostEnsureImageRequest,
+  HostImageInspection,
+  HostImageSummary,
+  HostListImagesOptions,
+  HostListStaleImageWorkspacesOptions,
+  HostRemoveImageOptions,
+  StaleImageWorkspace,
+} from "./image/types.js";
+import { listStaleImageWorkspaces } from "./image/workspace.js";
 import { createRedactingLogger, safeLog, silentLogger, type Logger } from "./logging.js";
 import { inspectOwnershipLabels } from "./ownership.js";
 import { buildOwnershipLabels } from "./ownership-adoption.js";
@@ -75,6 +95,14 @@ export class FakeHost implements Host {
   private readonly byKey = new Map<string, StoredSandbox>();
   private readonly byNativeName = new Map<string, string>();
   private readonly filesystems = new Map<string, FakeSandboxFilesystem>();
+  private readonly images = new Map<
+    string,
+    {
+      readonly labels: Readonly<Record<string, string>>;
+      readonly env: readonly string[];
+      readonly owned: boolean;
+    }
+  >();
   private readonly logger: Logger;
   private readonly now: () => Date;
   private disposed = false;
@@ -222,6 +250,119 @@ export class FakeHost implements Host {
       localMicrosandbox: false,
       notes: ["FakeHost models the Host contract in memory."],
     }));
+  }
+
+  async ensureImage(
+    request: HostEnsureImageRequest,
+    options?: HostEnsureImageOptions,
+  ): Promise<HostImageInspection> {
+    this.operations.push("ensureImage");
+    return this.withOperation("ensureImage", undefined, options, async () => {
+      const ports: EnsureImagePorts = {
+        get: async (reference) => {
+          const stored = this.images.get(reference);
+          if (stored === undefined) {
+            return null;
+          }
+          return {
+            reference,
+            labels: stored.labels,
+            env: stored.env,
+            owned: stored.owned,
+            ...(stored.owned
+              ? {
+                  contentIdentity: stored.labels["dev.sohcah.sbox/image-identity"],
+                  algorithmVersion: IMAGE_IDENTITY_ALGORITHM_VERSION,
+                }
+              : {}),
+          };
+        },
+        load: async () => {
+          throw SboxError.internal("FakeHost ensureImage should use fakePublish.");
+        },
+        remove: async (reference) => {
+          this.images.delete(reference);
+        },
+        fakePublish: async (identity) => {
+          const labels = buildImageOwnershipLabels(identity.digestHex);
+          const envMap = buildImageOwnershipEnv(identity.digestHex);
+          this.images.set(identity.nativeReference, {
+            labels,
+            env: Object.entries(envMap).map(([key, value]) => `${key}=${value}`),
+            owned: true,
+          });
+        },
+      };
+      return ensureImage(request, options ?? {}, ports);
+    });
+  }
+
+  async listImages(options?: HostListImagesOptions): Promise<readonly HostImageSummary[]> {
+    this.operations.push("listImages");
+    return this.withOperation("listImages", undefined, options, async () => {
+      const out: HostImageSummary[] = [];
+      for (const [reference, stored] of this.images) {
+        const parsed = parseNativeImageReference(reference);
+        if (parsed === undefined) {
+          continue;
+        }
+        if (!stored.owned && options?.includeUnowned !== true) {
+          continue;
+        }
+        out.push({
+          reference,
+          contentIdentity: formatImageContentDigest(parsed.digestHex),
+          algorithmVersion: IMAGE_IDENTITY_ALGORITHM_VERSION,
+          owned: stored.owned,
+        });
+      }
+      return out;
+    });
+  }
+
+  async removeImage(reference: string, options?: HostRemoveImageOptions): Promise<void> {
+    this.operations.push("removeImage");
+    return this.withOperation("removeImage", undefined, options, async () => {
+      const parsed = parseNativeImageReference(reference);
+      if (parsed === undefined) {
+        throw SboxError.validation(
+          "Image removal requires an exact generated sbox image reference.",
+          {
+            details: { path: "reference" },
+          },
+        );
+      }
+      const stored = this.images.get(reference);
+      if (stored === undefined) {
+        throw SboxError.notFound("Native image was not found.", { details: { reference } });
+      }
+      const ownership = inspectImageOwnershipEvidence(stored.labels, stored.env, parsed.digestHex);
+      if (!ownership.ok) {
+        throw SboxError.ownershipConflict(
+          "Refusing to remove an image that is not an owned sbox generated image.",
+          { details: { reference, reason: ownership.reason } },
+        );
+      }
+      this.images.delete(reference);
+    });
+  }
+
+  async listStaleImageWorkspaces(
+    options?: HostListStaleImageWorkspacesOptions,
+  ): Promise<readonly StaleImageWorkspace[]> {
+    this.operations.push("listStaleImageWorkspaces");
+    return this.withOperation("listStaleImageWorkspaces", undefined, options, async () =>
+      listStaleImageWorkspaces(options?.workspaceRoot),
+    );
+  }
+
+  /** Test helper: plant a conflicting unowned image at a generated reference. */
+  plantConflictingImage(
+    reference: string,
+    labels: Readonly<Record<string, string>> = {},
+    env: readonly string[] = [],
+  ): void {
+    this.images.set(reference, { labels, env, owned: false });
   }
 
   async execArgv(

@@ -64,6 +64,33 @@ describe("evaluateNodeVersion", () => {
 });
 
 describe("runDoctor", () => {
+  it("shows every check and the failing detail in text mode", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "sbox-doctor-text-"));
+    await writeProject(dir);
+    const { io, stdoutText } = collectingIo(dir);
+    const code = await runDoctor(
+      {
+        io,
+        format: "text",
+        flags: { json: false },
+        host: new FakeHost(),
+      },
+      {
+        nodeVersion: "v22.11.0",
+        ...silentTooling,
+      },
+    );
+
+    expect(code).toBe(EXIT_OPERATIONAL);
+    expect(stdoutText()).toContain("[FAIL] node (required)");
+    expect(stdoutText()).toContain("require Node 24+");
+    expect(stdoutText()).toContain("[ok] protocol (required)");
+    expect(stdoutText()).toContain("[unavailable] docker (informational): docker missing");
+    expect(stdoutText()).toContain(
+      "error(capability): doctor reported one or more failed required checks.",
+    );
+  });
+
   it("passes required checks and reports informational tooling", async () => {
     const dir = await mkdtemp(join(tmpdir(), "sbox-doctor-"));
     await writeProject(dir);

@@ -293,6 +293,10 @@ export async function runDoctor(ctx: CliContext, ports: DoctorProbePorts = {}): 
   }
 
   const ok = checks.filter((c) => c.required).every((c) => c.ok);
+  if (ctx.format === "text") {
+    writeResult(ctx, formatDoctorText(checks, ok));
+    return ok ? EXIT_SUCCESS : EXIT_OPERATIONAL;
+  }
   writeResult(
     ctx,
     formatCliResult(
@@ -312,4 +316,17 @@ export async function runDoctor(ctx: CliContext, ports: DoctorProbePorts = {}): 
     ),
   );
   return ok ? EXIT_SUCCESS : EXIT_OPERATIONAL;
+}
+
+function formatDoctorText(checks: readonly DoctorCheck[], ok: boolean): string {
+  const lines = checks.map((check) => {
+    const status = check.ok ? "ok" : check.required ? "FAIL" : "unavailable";
+    const requirement = check.required ? "required" : "informational";
+    const detail = check.detail !== undefined ? `: ${check.detail}` : "";
+    return `[${status}] ${check.name} (${requirement})${detail}`;
+  });
+  if (!ok) {
+    lines.push("error(capability): doctor reported one or more failed required checks.");
+  }
+  return `${lines.join("\n")}\n`;
 }

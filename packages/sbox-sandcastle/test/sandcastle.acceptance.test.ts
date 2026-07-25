@@ -46,7 +46,7 @@ function projectConfig(volume?: boolean) {
         image: "alpine:3.20",
         cpus: 1,
         memoryMiB: 512,
-        workdir: "/workspace",
+        workdir: "/root",
         user: "root",
         shell: "/bin/sh",
         ...(volume
@@ -63,16 +63,16 @@ async function exerciseProvider(client: SboxClient, workDir: string): Promise<vo
   const provider = createSboxSandcastleProvider({
     client,
     profile: "default",
-    worktreePath: "/workspace",
+    worktreePath: "/root",
   });
   const handle = await provider.create({ env: { SC_ACCEPT: "1" } });
   try {
-    expect(handle.worktreePath).toBe("/workspace");
+    expect(handle.worktreePath).toBe("/root");
 
     const lines: string[] = [];
     const live = await handle.exec("printf 'a\\nb\\n'; printf 'c\\n' 1>&2", {
       onLine: (line) => lines.push(line),
-      cwd: "/workspace",
+      cwd: "/root",
     });
     expect(live.exitCode).toBe(0);
     expect(lines).toEqual(expect.arrayContaining(["a", "b", "c"]));
@@ -87,9 +87,9 @@ async function exerciseProvider(client: SboxClient, workDir: string): Promise<vo
     const src = join(workDir, "payload");
     await mkdir(src, { recursive: true });
     await writeFile(join(src, "note.txt"), "hello-sc", "utf8");
-    await handle.copyIn(src, "/workspace/in");
+    await handle.copyIn(src, "/root/in");
     const outFile = join(workDir, "out.txt");
-    await handle.copyFileOut("/workspace/in/note.txt", outFile);
+    await handle.copyFileOut("/root/in/note.txt", outFile);
     expect(await readFile(outFile, "utf8")).toBe("hello-sc");
 
     const stdin = new PassThrough();

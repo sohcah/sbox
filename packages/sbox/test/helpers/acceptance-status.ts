@@ -2,6 +2,8 @@
  * Stable, always-visible acceptance status lines for `pnpm test:acceptance`.
  */
 
+import { stripVTControlCharacters } from "node:util";
+
 export const ACCEPTANCE_STATUS_PREFIX = "sbox-acceptance-status:";
 
 export type AcceptanceStatus = "passed" | "unavailable" | "failed";
@@ -16,12 +18,12 @@ export function formatAcceptanceStatusLine(status: AcceptanceStatus, detail?: st
 export function findAcceptanceStatusLine(output: string): string | undefined {
   return output
     .split("\n")
-    .map((line) => line.trim())
+    .map((line) => stripVTControlCharacters(line).trim())
     .find((line) => line.startsWith(ACCEPTANCE_STATUS_PREFIX));
 }
 
 export function parseAcceptanceStatusLine(line: string): AcceptanceStatus | undefined {
-  const trimmed = line.trim();
+  const trimmed = stripVTControlCharacters(line).trim();
   if (!trimmed.startsWith(ACCEPTANCE_STATUS_PREFIX)) {
     return undefined;
   }

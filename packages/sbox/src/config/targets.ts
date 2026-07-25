@@ -53,8 +53,8 @@ export interface TargetResolutionInput {
 }
 
 /**
- * Select and authorize a local Host target for Phase 2 operations.
- * Remote targets fail closed without resolving bearer credentials or touching Host.
+ * Select and authorize a local Host target when remote transport must not be used
+ * (injected Host tests, local-only tooling).
  */
 export async function requireLocalTarget(
   input: Omit<TargetResolutionInput, "external"> & {
@@ -65,16 +65,13 @@ export async function requireLocalTarget(
   const configured = resolveConfiguredTarget(input.user, name, source);
 
   if (configured.kind === "remote") {
-    throw SboxError.capability(
-      "Remote targets require Phase 7 remote Host transport and are not available yet.",
-      {
-        details: {
-          target: name,
-          url: configured.url,
-          unavailableReason: "remote_transport_unimplemented",
-        },
+    throw SboxError.capability("Remote target was selected but an injected local Host is in use.", {
+      details: {
+        target: name,
+        url: configured.url,
+        unavailableReason: "injected_host_local_only",
       },
-    );
+    });
   }
 
   return { kind: "local", name, source };
@@ -82,7 +79,6 @@ export async function requireLocalTarget(
 
 /**
  * Full target materialization including remote credentials.
- * Reserved for Phase 7 transport; not required for Phase 2 Host gating.
  */
 export async function resolveTarget(input: TargetResolutionInput): Promise<ResolvedTarget> {
   const { name, source } = selectTargetName(input);
@@ -165,20 +161,17 @@ async function materializeTarget(
 }
 
 /**
- * Phase 2 only supports the local Host. Remote targets fail closed.
+ * Phase 2-style local-only assertion when a ResolvedTarget is already in hand.
  */
 export function assertLocalTarget(target: ResolvedTarget): ResolvedLocalTarget {
   if (target.kind === "local") {
     return target;
   }
-  throw SboxError.capability(
-    "Remote targets require Phase 7 remote Host transport and are not available yet.",
-    {
-      details: {
-        target: target.name,
-        url: target.url,
-        unavailableReason: "remote_transport_unimplemented",
-      },
+  throw SboxError.capability("Expected a local target.", {
+    details: {
+      target: target.name,
+      url: target.url,
+      unavailableReason: "remote_target",
     },
-  );
+  });
 }

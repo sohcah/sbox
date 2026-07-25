@@ -4,8 +4,8 @@
  * Resolves project intent and invokes Host. Does not load YAML itself when
  * constructed from typed config; the YAML factory is a convenience adapter.
  *
- * Every lifecycle operation resolves the selected target first. Until Phase 7,
- * a remote target fails with capability before any local Host call.
+ * Every lifecycle operation resolves the selected target first and opens the
+ * matching LocalHost or RemoteHost (injected host overrides for tests).
  */
 
 import { isSboxError, SboxError, throwIfAborted, wrapUnknownFailure } from "../errors.js";
@@ -14,6 +14,7 @@ import { disposeHost } from "../host.js";
 import { assertProjectId, assertSandboxIdentity, type SandboxIdentity } from "../identity.js";
 import type { HostImageInspection, ImageBuildProgressEvent } from "../image/types.js";
 import { createLocalHost } from "../local-host.js";
+import { createRemoteHost } from "../remote/remote-host.js";
 import { createRedactingLogger, safeLog, silentLogger, type Logger } from "../logging.js";
 import type {
   HostListOptions,
@@ -24,7 +25,7 @@ import type {
 import type { ProjectConfig, UserConfig } from "../config/types.js";
 import { isBuildProfile } from "../config/types.js";
 import { parseProjectConfig, parseUserConfig } from "../config/validate.js";
-import { requireLocalTarget, type ResolvedLocalTarget } from "../config/targets.js";
+import { requireLocalTarget, resolveTarget } from "../config/targets.js";
 import type { ExternalResolutionContext } from "../config/external.js";
 import { parseBinarySizeToBytes } from "../config/scalars.js";
 import { resolveInstanceId, selectProfile } from "../config/profile.js";
@@ -127,9 +128,11 @@ export interface SboxClient extends AsyncDisposable {
 class HostSboxClient implements SboxClient {
   readonly project: ProjectConfig;
   private readonly user: UserConfig;
-  private readonly host: Host;
+  private readonly injectedHost: Host | undefined;
+  private readonly ownsInjectedHost: boolean;
+  private readonly hostCache = new Map<string, Host>();
+  private readonly ownedHosts = new Set<Host>();
   private readonly logger: Logger;
-  private readonly ownsHost: boolean;
   private readonly configDirectory: string;
   private readonly env: Readonly<Record<string, string | undefined>>;
   private readonly invocation: Readonly<Record<string, string>>;
@@ -146,20 +149,20 @@ class HostSboxClient implements SboxClient {
     this.env = options.env ?? process.env;
     this.invocation = options.invocation ?? {};
     if (options.host !== undefined) {
-      this.host = options.host;
-      this.ownsHost = options.ownsHost ?? false;
+      this.injectedHost = options.host;
+      this.ownsInjectedHost = options.ownsHost ?? false;
     } else {
-      this.host = createLocalHost({ logger: this.logger });
-      this.ownsHost = options.ownsHost ?? true;
+      this.injectedHost = undefined;
+      this.ownsInjectedHost = false;
     }
   }
 
   async create(options: ProfileOperationOptions = {}): Promise<SandboxHandle> {
     return this.withOperation("create", undefined, options, async () => {
-      await this.requireLocal(options);
+      const host = await this.hostFor(options);
       const intent = await this.resolveIntent(options);
-      const inspection = await this.host.create(intent.request, toHostOptions(options));
-      return new HostSandboxHandle(this.host, inspection.identity);
+      const inspection = await host.create(intent.request, toHostOptions(options));
+      return new HostSandboxHandle(host, inspection.identity);
     });
   }
 
@@ -169,16 +172,16 @@ class HostSboxClient implements SboxClient {
   ): Promise<SandboxHandle> {
     const resolved = this.resolveReference(identityOrOptions, options);
     return this.withOperation("get", resolved.identity, resolved.options, async () => {
-      await this.requireLocal(resolved.options);
-      await this.host.get(resolved.identity, toHostOptions(resolved.options));
-      return new HostSandboxHandle(this.host, resolved.identity);
+      const host = await this.hostFor(resolved.options);
+      await host.get(resolved.identity, toHostOptions(resolved.options));
+      return new HostSandboxHandle(host, resolved.identity);
     });
   }
 
   async list(options?: ClientListOptions): Promise<readonly SandboxSummary[]> {
     return this.withOperation("list", undefined, options, async () => {
-      await this.requireLocal(options ?? {});
-      return this.host.list(toHostListOptions(options, assertProjectId(this.project.project)));
+      const host = await this.hostFor(options ?? {});
+      return host.list(toHostListOptions(options, assertProjectId(this.project.project)));
     });
   }
 
@@ -194,13 +197,13 @@ class HostSboxClient implements SboxClient {
    */
   async up(options: ProfileOperationOptions = {}): Promise<SandboxHandle> {
     return this.withOperation("up", undefined, options, async () => {
-      await this.requireLocal(options);
+      const host = await this.hostFor(options);
       const intent = await this.resolveIntentPredictingImage(options);
       const hostOptions = toHostOptions(options);
 
       let existing: SandboxInspection | undefined;
       try {
-        existing = await this.host.get(intent.identity, hostOptions);
+        existing = await host.get(intent.identity, hostOptions);
       } catch (error) {
         if (!isSboxError(error) || error.code !== "not_found") {
           throw error;
@@ -211,18 +214,18 @@ class HostSboxClient implements SboxClient {
         if (intent.needsImageEnsure) {
           await this.ensureProfileImage(options);
         }
-        const created = await this.host.create(intent.request, hostOptions);
-        return new HostSandboxHandle(this.host, created.identity);
+        const created = await host.create(intent.request, hostOptions);
+        return new HostSandboxHandle(host, created.identity);
       }
 
       reportCreationDrift(intent.identity, intent.projected, existing);
 
       if (existing.state === "running") {
-        return new HostSandboxHandle(this.host, existing.identity);
+        return new HostSandboxHandle(host, existing.identity);
       }
       if (existing.state === "stopped") {
-        const started = await this.host.start(intent.identity, hostOptions);
-        return new HostSandboxHandle(this.host, started.identity);
+        const started = await host.start(intent.identity, hostOptions);
+        return new HostSandboxHandle(host, started.identity);
       }
       throw SboxError.nativeState(`Cannot up sandbox in state ${formatState(existing.state)}.`, {
         details: { state: existing.state },
@@ -232,27 +235,26 @@ class HostSboxClient implements SboxClient {
 
   async recreate(options: ProfileOperationOptions = {}): Promise<SandboxHandle> {
     return this.withOperation("recreate", undefined, options, async () => {
-      await this.requireLocal(options);
+      const host = await this.hostFor(options);
       const intent = await this.resolveIntent(options);
       const hostOptions = toHostOptions(options);
 
       try {
-        await this.host.get(intent.identity, hostOptions);
-        await this.host.remove(intent.identity, hostOptions);
+        await host.get(intent.identity, hostOptions);
+        await host.remove(intent.identity, hostOptions);
       } catch (error) {
         if (!isSboxError(error) || error.code !== "not_found") {
           throw error;
         }
       }
 
-      const created = await this.host.create(intent.request, hostOptions);
-      return new HostSandboxHandle(this.host, created.identity);
+      const created = await host.create(intent.request, hostOptions);
+      return new HostSandboxHandle(host, created.identity);
     });
   }
 
   async build(options: ClientBuildOptions = {}): Promise<HostImageInspection> {
     return this.withOperation("build", undefined, options, async () => {
-      await this.requireLocal(options);
       return this.ensureProfileImage(options);
     });
   }
@@ -261,8 +263,8 @@ class HostSboxClient implements SboxClient {
     options: ClientOperationOptions & { readonly includeUnowned?: boolean } = {},
   ): Promise<Awaited<ReturnType<Host["listImages"]>>> {
     return this.withOperation("listImages", undefined, options, async () => {
-      await this.requireLocal(options);
-      return this.host.listImages({
+      const host = await this.hostFor(options);
+      return host.listImages({
         ...(options.signal !== undefined ? { signal: options.signal } : {}),
         ...(options.includeUnowned !== undefined ? { includeUnowned: options.includeUnowned } : {}),
       });
@@ -274,8 +276,8 @@ class HostSboxClient implements SboxClient {
     options: ClientOperationOptions & { readonly force?: boolean } = {},
   ): Promise<void> {
     return this.withOperation("removeImage", undefined, options, async () => {
-      await this.requireLocal(options);
-      await this.host.removeImage(reference, {
+      const host = await this.hostFor(options);
+      await host.removeImage(reference, {
         ...(options.signal !== undefined ? { signal: options.signal } : {}),
         ...(options.force !== undefined ? { force: options.force } : {}),
       });
@@ -286,8 +288,8 @@ class HostSboxClient implements SboxClient {
     options: ClientOperationOptions & { readonly workspaceRoot?: string } = {},
   ): Promise<Awaited<ReturnType<Host["listStaleImageWorkspaces"]>>> {
     return this.withOperation("listStaleImageWorkspaces", undefined, options, async () => {
-      await this.requireLocal(options);
-      return this.host.listStaleImageWorkspaces({
+      const host = await this.hostFor(options);
+      return host.listStaleImageWorkspaces({
         ...(options.signal !== undefined ? { signal: options.signal } : {}),
         ...(options.workspaceRoot !== undefined ? { workspaceRoot: options.workspaceRoot } : {}),
       });
@@ -300,8 +302,8 @@ class HostSboxClient implements SboxClient {
   ): Promise<SandboxInspection> {
     const resolved = this.resolveReference(identityOrOptions, options);
     return this.withOperation("inspect", resolved.identity, resolved.options, async () => {
-      await this.requireLocal(resolved.options);
-      return this.host.inspect(resolved.identity, toHostOptions(resolved.options));
+      const host = await this.hostFor(resolved.options);
+      return host.inspect(resolved.identity, toHostOptions(resolved.options));
     });
   }
 
@@ -311,8 +313,8 @@ class HostSboxClient implements SboxClient {
   ): Promise<SandboxInspection> {
     const resolved = this.resolveReference(identityOrOptions, options);
     return this.withOperation("stop", resolved.identity, resolved.options, async () => {
-      await this.requireLocal(resolved.options);
-      return this.host.stop(resolved.identity, toHostOptions(resolved.options));
+      const host = await this.hostFor(resolved.options);
+      return host.stop(resolved.identity, toHostOptions(resolved.options));
     });
   }
 
@@ -322,8 +324,8 @@ class HostSboxClient implements SboxClient {
   ): Promise<void> {
     const resolved = this.resolveReference(identityOrOptions, options);
     return this.withOperation("remove", resolved.identity, resolved.options, async () => {
-      await this.requireLocal(resolved.options);
-      await this.host.remove(resolved.identity, toHostOptions(resolved.options));
+      const host = await this.hostFor(resolved.options);
+      await host.remove(resolved.identity, toHostOptions(resolved.options));
     });
   }
 
@@ -331,8 +333,8 @@ class HostSboxClient implements SboxClient {
     options: ClientOperationOptions = {},
   ): Promise<Awaited<ReturnType<Host["listVolumes"]>>> {
     return this.withOperation("listVolumes", undefined, options, async () => {
-      await this.requireLocal(options);
-      return this.host.listVolumes(
+      const host = await this.hostFor(options);
+      return host.listVolumes(
         { project: assertProjectId(this.project.project) },
         toHostOptions(options),
       );
@@ -344,14 +346,14 @@ class HostSboxClient implements SboxClient {
     options: ClientOperationOptions = {},
   ): Promise<Awaited<ReturnType<Host["ensureVolume"]>>> {
     return this.withOperation("ensureVolume", undefined, options, async () => {
-      await this.requireLocal(options);
+      const host = await this.hostFor(options);
       const declaration = this.project.volumes?.[volume];
       if (declaration === undefined) {
         throw SboxError.validation(`Volume "${volume}" is not declared in project volumes.`, {
           details: { path: `volumes.${volume}` },
         });
       }
-      return this.host.ensureVolume(
+      return host.ensureVolume(
         {
           project: assertProjectId(this.project.project),
           volume,
@@ -364,13 +366,13 @@ class HostSboxClient implements SboxClient {
 
   async removeVolume(volume: string, options: ClientOperationOptions = {}): Promise<void> {
     await this.withOperation("removeVolume", undefined, options, async () => {
-      await this.requireLocal(options);
+      const host = await this.hostFor(options);
       if (this.project.volumes?.[volume] === undefined) {
         throw SboxError.validation(`Volume "${volume}" is not declared in project volumes.`, {
           details: { path: `volumes.${volume}` },
         });
       }
-      await this.host.removeVolume(
+      await host.removeVolume(
         { project: assertProjectId(this.project.project), volume },
         toHostOptions(options),
       );
@@ -379,7 +381,7 @@ class HostSboxClient implements SboxClient {
 
   async volumeShell(volume: string, options: ProfileOperationOptions = {}): Promise<SandboxHandle> {
     return this.withOperation("volumeShell", undefined, options, async () => {
-      await this.requireLocal(options);
+      const host = await this.hostFor(options);
       const declaration = this.project.volumes?.[volume];
       if (declaration === undefined) {
         throw SboxError.validation(`Volume "${volume}" is not declared in project volumes.`, {
@@ -397,7 +399,7 @@ class HostSboxClient implements SboxClient {
         ...options,
         profile: selected.name,
       });
-      const inspection = await this.host.volumeShell(
+      const inspection = await host.volumeShell(
         {
           project: assertProjectId(this.project.project),
           volume,
@@ -423,7 +425,7 @@ class HostSboxClient implements SboxClient {
         },
         toHostOptions(options),
       );
-      return new HostSandboxHandle(this.host, inspection.identity);
+      return new HostSandboxHandle(host, inspection.identity);
     });
   }
 
@@ -432,19 +434,48 @@ class HostSboxClient implements SboxClient {
       return;
     }
     this.disposed = true;
-    if (this.ownsHost) {
-      await disposeHost(this.host);
+    if (this.ownsInjectedHost && this.injectedHost !== undefined) {
+      await disposeHost(this.injectedHost);
     }
+    for (const host of this.ownedHosts) {
+      await disposeHost(host);
+    }
+    this.ownedHosts.clear();
+    this.hostCache.clear();
   }
 
-  private async requireLocal(
-    options: ClientOperationOptions | ProfileOperationOptions,
-  ): Promise<ResolvedLocalTarget> {
-    return requireLocalTarget({
+  private async hostFor(options: ClientOperationOptions | ProfileOperationOptions): Promise<Host> {
+    if (this.injectedHost !== undefined) {
+      await requireLocalTarget({
+        project: this.project,
+        user: this.user,
+        ...(options.target !== undefined ? { explicitTarget: options.target } : {}),
+      });
+      return this.injectedHost;
+    }
+    const target = await resolveTarget({
       project: this.project,
       user: this.user,
       ...(options.target !== undefined ? { explicitTarget: options.target } : {}),
+      external: this.externalContext(options),
     });
+    const key =
+      target.kind === "local" ? `local:${target.name}` : `remote:${target.name}:${target.url}`;
+    const cached = this.hostCache.get(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const host =
+      target.kind === "local"
+        ? createLocalHost({ logger: this.logger })
+        : createRemoteHost({
+            url: target.url,
+            bearerToken: target.token,
+            logger: this.logger,
+          });
+    this.hostCache.set(key, host);
+    this.ownedHosts.add(host);
+    return host;
   }
 
   private resolveReference(
@@ -529,13 +560,14 @@ class HostSboxClient implements SboxClient {
   }
 
   private async ensureProfileImage(options: ClientBuildOptions): Promise<HostImageInspection> {
+    const host = await this.hostFor(options);
     const resolved = await resolveEnsureImageRequest({
       project: this.project,
       ...(options.profile !== undefined ? { profile: options.profile } : {}),
       external: this.externalContext(options),
       ...(options.force === true ? { force: true } : {}),
     });
-    return this.host.ensureImage(resolved.request, {
+    return host.ensureImage(resolved.request, {
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
       ...(options.onProgress !== undefined ? { onProgress: options.onProgress } : {}),
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),

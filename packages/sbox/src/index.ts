@@ -123,6 +123,20 @@ export type { TransferOverwrite, HostCopyOptions, HostCopyRequest } from "./tran
 
 export { createLocalHost, type LocalHostOptions } from "./local-host.js";
 
+export {
+  SBOX_PROTOCOL_VERSION,
+  createRemoteHost,
+  createSboxServer,
+  DEFAULT_REMOTE_LIMITS,
+  resolveRemoteLimits,
+  type RemoteHostOptions,
+  type SboxServer,
+  type SboxServerOptions,
+  type RemoteLimits,
+  type HealthResponse,
+  type HandshakeResponse,
+} from "./remote/index.js";
+
 export type {
   ConfigValue,
   ConfigurationIssue,

@@ -558,7 +558,12 @@ class FakePtySession implements PtySession {
   async wait(): Promise<{ readonly exitCode: number; readonly signal: string | null }> {
     await this.pumpTask;
     if (!this.settled) {
-      if (this.timeoutMs !== undefined) {
+      // With an abort signal or timeout, behave like a real PTY: wait for the
+      // process to settle. Remote sessions always pass a signal, so the server
+      // can await wait() without immediately ending the fake session.
+      // Without either, wait() completes with exit 0 for simple local tests.
+      // Remote clients send `{type:"complete"}` which calls complete().
+      if (this.timeoutMs !== undefined || this.abortSignal !== undefined) {
         await this.whenSettled;
       } else {
         this.exitCode = 0;
@@ -569,6 +574,16 @@ class FakePtySession implements PtySession {
       throw this.failure;
     }
     return { exitCode: this.exitCode ?? 0, signal: null };
+  }
+
+  /** Settle successfully (remote client `wait()` / local wait without a live child). */
+  async complete(): Promise<void> {
+    if (this.settled || this.finishing !== null) {
+      await this.finishing;
+      return;
+    }
+    this.exitCode = 0;
+    await this.finish();
   }
 
   async cancel(reason = "cancelled"): Promise<void> {

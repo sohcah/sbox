@@ -7,10 +7,12 @@ import { SboxError } from "../errors.js";
 import type { Host } from "../host.js";
 import type { Logger } from "../logging.js";
 import { runConfigShow, runConfigValidate } from "./commands/config.js";
+import { runDoctor } from "./commands/doctor.js";
 import { runExec, runShell } from "./commands/exec-shell.js";
 import { runBuild, runImageList, runImageRemove } from "./commands/image.js";
 import { runInit } from "./commands/init.js";
 import { runInspect, runList, runRemove, runStop, runUp } from "./commands/lifecycle.js";
+import { runServe } from "./commands/serve.js";
 import { runVolumeList, runVolumeRemove, runVolumeShell } from "./commands/volume.js";
 import type { CliContext, CliGlobalFlags, CliIo } from "./context.js";
 import { writeResult } from "./context.js";
@@ -30,6 +32,8 @@ Usage:
   sbox init [--force] [--project <slug>]
   sbox config validate
   sbox config show
+  sbox doctor
+  sbox serve [--bind <addr>] [--port <n>] [--token-env <name>] [--allow-non-loopback]
   sbox build [profile] [--force]
   sbox up [profile]
   sbox list
@@ -86,6 +90,10 @@ export async function runCli(options: RunCliOptions): Promise<number> {
         cwd: { type: "string" },
         user: { type: "string" },
         stream: { type: "boolean", default: false },
+        bind: { type: "string" },
+        port: { type: "string" },
+        "token-env": { type: "string" },
+        "allow-non-loopback": { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -148,6 +156,17 @@ export async function runCli(options: RunCliOptions): Promise<number> {
         }
         throw SboxError.validation('Expected "config validate" or "config show".', {
           details: { path: "argv" },
+        });
+      }
+      case "doctor":
+        return await runDoctor(ctx);
+      case "serve": {
+        const portRaw = values["port"];
+        return await runServe(ctx, {
+          ...(typeof values["bind"] === "string" ? { bind: values["bind"] } : {}),
+          ...(typeof portRaw === "string" ? { port: Number(portRaw) } : {}),
+          ...(typeof values["token-env"] === "string" ? { tokenEnv: values["token-env"] } : {}),
+          ...(values["allow-non-loopback"] === true ? { allowNonLoopback: true } : {}),
         });
       }
       case "up":

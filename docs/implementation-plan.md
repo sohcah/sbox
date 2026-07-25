@@ -466,6 +466,48 @@ Tests and evidence:
 Exit condition: changing the selected target changes transport only; all stable
 client and handle behavior remains the same.
 
+### Phase 7 implementation notes
+
+- Protocol version `SBOX_PROTOCOL_VERSION = 1`. Unauthenticated `GET /health`;
+  authenticated `GET /v1/handshake` returns capabilities. Bearer auth on all
+  other HTTP routes and `/v1/session` WebSocket upgrades.
+- JSON routes cover sandboxes, images (context archive + metadata header),
+  volumes, collected exec; archives for host↔guest transfer; WebSocket for
+  streaming exec/PTY with binary stdin and JSON control (`cancel`/`resize`).
+- Streaming session errors are forwarded as typed wire errors (not silent exit
+  1). Socket close without an `exited` frame settles as `transport`. Collected
+  exec forwards caller `stdoutMaxBytes`/`stderrMaxBytes`; the server applies
+  configurable defaults/caps (`maxStdoutBytes`/`maxStderrBytes`).
+- Session sockets attach the message handler before `host.pty` / stream setup
+  and queue early frames; the server sends `ready` before returning control to
+  the client. Output pumping and `wait()` run concurrently so settlement is not
+  gated on draining the output iterable. After settlement, `exited` is sent
+  after at most `outputFlushMs` even if the pump is stalled on backpressure.
+  Output-pump promises are rejection-sunk immediately so a cancel that closes
+  the output queue cannot crash the server via an unhandled rejection (found
+  by remote LocalHost acceptance). Remote PTY `wait()` sends `{type:"complete"}`
+  so FakePty (which holds open under an abort signal) can settle with exit 0
+  like local `wait()`.
+- Limits include request/archive bytes, concurrent builds/processes,
+  `maxDurationMs`, `sessionStartTimeoutMs`, and output bounds. Non-loopback
+  bind requires explicit `allowNonLoopback` / `--allow-non-loopback`. Shutdown
+  cancels active work, drains sockets up to `shutdownWaitMs`, then terminates.
+- `createSboxServer` wraps an injected Host (LocalHost in `sbox serve`, FakeHost
+  in tests). Server modules do not import project YAML/discovery (asserted in
+  tests). Request/session lines go through the redacting logger.
+- `createRemoteHost` + `SboxClient` `resolveTarget` host cache open LocalHost or
+  RemoteHost; injected Host remains local-only for tests. NDJSON image ensure
+  progress is consumed live from the response body. Dispose closes open
+  session sockets.
+- CLI: `serve` (`SBOX_SERVE_TOKEN` / `--token-env`, min token length 16,
+  `--allow-non-loopback`), minimal `doctor` (HTTP unencrypted warning only for
+  non-loopback `http://` URLs).
+- Dependency: `ws`. Contract tests in `packages/sbox/test/remote-host.test.ts`
+  (in-process FakeHost) and `packages/sbox/test/remote-host-subprocess.test.ts`
+  (authenticated FakeHost server in a real Node subprocess over loopback
+  HTTP/WS — auth, lifecycle, streaming exec/PTY, kill→transport, graceful
+  shutdown). Real LocalHost-behind-serve evidence:
+  `packages/sbox/test/remote.acceptance.test.ts` under `pnpm test:acceptance`.
 ## Phase 8: Sandcastle adapter and complete CLI workflows
 
 Implement the bounded integration only after the general API proves all of its

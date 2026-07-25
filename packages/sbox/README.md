@@ -3,19 +3,16 @@
 Public Node.js API and `sbox` CLI for configuration-driven Microsandbox
 workflows.
 
-Phase 3 exposes:
+Includes local and remote Hosts: `createLocalHost`, `createRemoteHost`, and
+foreground `createSboxServer` / `sbox serve` (bearer token via `SBOX_SERVE_TOKEN`).
+Protocol version is `SBOX_PROTOCOL_VERSION` (`1`). Health is unauthenticated;
+all other routes and WebSocket upgrades require Bearer auth.
 
-- strict version-1 typed project configuration and `sbox.yaml` loading;
-- `createSboxClient` / `createSboxClientFromYaml`;
-- named-sandbox `create`, `get`, `list`, `up`, and `recreate`;
-- sandbox handles with lifecycle plus `exec` / `execStream` / `shell` /
-  `shellStream` / `pty` / `copyToGuest` / `copyFromGuest`;
-- CLI commands: `init`, `config validate`, `config show`, `up`, `list`,
-  `inspect`, `stop`, `remove`, `exec`, `shell`.
+CLI highlights: `init`, `config`, `doctor`, `serve`, `build`, `up`, `list`,
+`inspect`, `stop`, `remove`, `exec`, `shell`, `image`, `volume`.
 
 Collected stdout/stderr default to 10 MiB each. Streaming sessions use a
 bounded pull-driven queue; callers must consume events or cancel. Non-zero
 guest exit is a `ProcessResult`. Operational failures throw `SboxError`.
-Microsandbox SDK types and transfer archive helpers are never part of this
-package's public surface. Disposal of clients and handles never changes
-sandbox lifecycle.
+Microsandbox SDK types are never part of this package's public surface.
+Disposal of clients and handles never changes sandbox lifecycle.

@@ -175,7 +175,12 @@ describe("remote LocalHost acceptance", () => {
           hostPath: backDir,
         });
         const st = await lstat(join(backDir, "nested", "run.sh"));
-        expect(st.mode & 0o111).not.toBe(0);
+        // Windows host filesystems do not preserve Unix executable bits.
+        if (process.platform !== "win32") {
+          expect(st.mode & 0o111).not.toBe(0);
+        } else {
+          expect(st.isFile()).toBe(true);
+        }
       } finally {
         await rm(xferRoot, { recursive: true, force: true });
       }

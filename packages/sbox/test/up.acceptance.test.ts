@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { packageModuleUrl } from "./helpers/acceptance-module.js";
 import { formatAcceptanceStatusLine } from "./helpers/acceptance-status.js";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const mod = (...segments: string[]) => JSON.stringify(packageModuleUrl(packageRoot, ...segments));
 
 function disposableTempPrefix(): string {
   return process.platform === "win32" ? join(tmpdir(), "sbox-") : "/tmp/sbox-";
@@ -121,11 +123,11 @@ describe("local image-reference up acceptance", () => {
     await writeFile(
       scriptPath,
       `
-        import { createMicrosandboxRuntime } from ${JSON.stringify(join(packageRoot, "dist/microsandbox-runtime.js"))};
-        import { createLocalHostInternal } from ${JSON.stringify(join(packageRoot, "dist/local-host-internal.js"))};
-        import { createSboxClient } from ${JSON.stringify(join(packageRoot, "dist/client/client.js"))};
-        import { parseProjectConfig } from ${JSON.stringify(join(packageRoot, "dist/config/validate.js"))};
-        import { isSboxError } from ${JSON.stringify(join(packageRoot, "dist/errors.js"))};
+        import { createMicrosandboxRuntime } from ${mod("dist/microsandbox-runtime.js")};
+        import { createLocalHostInternal } from ${mod("dist/local-host-internal.js")};
+        import { createSboxClient } from ${mod("dist/client/client.js")};
+        import { parseProjectConfig } from ${mod("dist/config/validate.js")};
+        import { isSboxError } from ${mod("dist/errors.js")};
 
         process.env.MSB_HOME = ${JSON.stringify(home)};
         const UNAVAILABLE_REASONS = new Set([

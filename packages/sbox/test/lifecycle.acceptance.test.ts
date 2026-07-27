@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { packageModuleUrl } from "./helpers/acceptance-module.js";
 import { formatAcceptanceStatusLine } from "./helpers/acceptance-status.js";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const mod = (...segments: string[]) => JSON.stringify(packageModuleUrl(packageRoot, ...segments));
 
 /** Prefer `/tmp` on Unix so `MSB_HOME` stays short (macOS Unix socket ~104 byte limit). */
 function disposableTempPrefix(): string {
@@ -123,11 +125,11 @@ describe("local Microsandbox lifecycle acceptance", () => {
     await writeFile(
       scriptPath,
       `
-        import { createMicrosandboxRuntime } from ${JSON.stringify(join(packageRoot, "dist/microsandbox-runtime.js"))};
-        import { createLocalHostInternal } from ${JSON.stringify(join(packageRoot, "dist/local-host-internal.js"))};
-        import { assertSandboxIdentity, nativeSandboxName } from ${JSON.stringify(join(packageRoot, "dist/identity.js"))};
-        import { disposeHost } from ${JSON.stringify(join(packageRoot, "dist/host.js"))};
-        import { isSboxError } from ${JSON.stringify(join(packageRoot, "dist/errors.js"))};
+        import { createMicrosandboxRuntime } from ${mod("dist/microsandbox-runtime.js")};
+        import { createLocalHostInternal } from ${mod("dist/local-host-internal.js")};
+        import { assertSandboxIdentity, nativeSandboxName } from ${mod("dist/identity.js")};
+        import { disposeHost } from ${mod("dist/host.js")};
+        import { isSboxError } from ${mod("dist/errors.js")};
 
         process.env.MSB_HOME = ${JSON.stringify(home)};
         const UNAVAILABLE_REASONS = new Set([

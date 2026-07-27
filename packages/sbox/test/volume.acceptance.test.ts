@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { createLocalHostInternal } from "../src/local-host-internal.js";
 import { probeQemuImg } from "../src/volume/qemu-img.js";
 import { assertSandboxIdentity } from "../src/identity.js";
+import { classifyAcceptanceFailure } from "./helpers/acceptance-outcome.js";
 import { formatAcceptanceStatusLine } from "./helpers/acceptance-status.js";
 
 describe("volume acceptance", () => {
@@ -66,12 +67,18 @@ describe("volume acceptance", () => {
       await host.removeVolume({ project: identity.project, volume: "cache" });
       console.log(formatAcceptanceStatusLine("passed"));
     } catch (error) {
-      console.log(
-        formatAcceptanceStatusLine(
-          "failed",
-          error instanceof Error ? error.message : String(error),
-        ),
-      );
+      const status = classifyAcceptanceFailure(error);
+      const reason =
+        error instanceof Error
+          ? error.message
+          : typeof error === "string"
+            ? error
+            : String(error);
+      console.log(formatAcceptanceStatusLine(status, reason));
+      if (status === "unavailable") {
+        skip(true, `Microsandbox acceptance unavailable: ${reason}`);
+        return;
+      }
       throw error;
     } finally {
       await rm(dataRoot, { recursive: true, force: true });

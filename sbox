@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+set -e
+
+pnpm build > /dev/null
+./packages/sbox/dist/cli.js $@

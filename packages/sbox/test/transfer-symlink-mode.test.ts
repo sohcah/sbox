@@ -61,31 +61,34 @@ describe("standalone symlink transfer semantics", () => {
     expect(isSafeSymlinkTarget("/etc/passwd", "/", "/")).toBe(false);
   });
 
-  it("rejects host-to-guest absolute symlink targets", async () => {
-    const root = await mkdtemp(join(tmpdir(), "sbox-abs-h2g-"));
-    const host = new FakeHost();
-    const id = seedRunning(host);
-    const src = join(root, "src");
-    await mkdir(src);
-    await writeFile(join(src, "target"), "x", "utf8");
-    // Absolute target inside the same tree — still not portable.
-    await symlink(join(src, "target"), join(src, "link"));
-    await expect(
-      host.copyHostToGuest({
-        identity: id,
-        hostPath: join(src, "link"),
-        guestPath: "/tree/link",
-      }),
-    ).rejects.toMatchObject({ code: "validation" });
+  it.skipIf(process.platform === "win32")(
+    "rejects host-to-guest absolute symlink targets",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "sbox-abs-h2g-"));
+      const host = new FakeHost();
+      const id = seedRunning(host);
+      const src = join(root, "src");
+      await mkdir(src);
+      await writeFile(join(src, "target"), "x", "utf8");
+      // Absolute target inside the same tree — still not portable.
+      await symlink(join(src, "target"), join(src, "link"));
+      await expect(
+        host.copyHostToGuest({
+          identity: id,
+          hostPath: join(src, "link"),
+          guestPath: "/tree/link",
+        }),
+      ).rejects.toMatchObject({ code: "validation" });
 
-    await expect(
-      host.copyHostToGuest({
-        identity: id,
-        hostPath: src,
-        guestPath: "/tree",
-      }),
-    ).rejects.toMatchObject({ code: "validation" });
-  });
+      await expect(
+        host.copyHostToGuest({
+          identity: id,
+          hostPath: src,
+          guestPath: "/tree",
+        }),
+      ).rejects.toMatchObject({ code: "validation" });
+    },
+  );
 
   it("rejects guest-to-host absolute symlink targets that would cross namespaces", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-abs-g2h-"));
@@ -113,37 +116,43 @@ describe("standalone symlink transfer semantics", () => {
     ).rejects.toMatchObject({ code: "validation" });
   });
 
-  it("rejects host-to-guest standalone escaping relative links", async () => {
-    const root = await mkdtemp(join(tmpdir(), "sbox-link-"));
-    const host = new FakeHost();
-    const id = seedRunning(host);
-    const link = join(root, "escape");
-    await symlink("../../outside", link);
-    await expect(
-      host.copyHostToGuest({
+  it.skipIf(process.platform === "win32")(
+    "rejects host-to-guest standalone escaping relative links",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "sbox-link-"));
+      const host = new FakeHost();
+      const id = seedRunning(host);
+      const link = join(root, "escape");
+      await symlink("../../outside", link);
+      await expect(
+        host.copyHostToGuest({
+          identity: id,
+          hostPath: link,
+          guestPath: "/app/escape",
+        }),
+      ).rejects.toMatchObject({ code: "validation" });
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "publishes relative links that resolve inside the destination tree",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "sbox-sib-"));
+      const host = new FakeHost();
+      const id = seedRunning(host);
+      const link = join(root, "link");
+      await symlink("sibling", link);
+      await host.copyHostToGuest({
         identity: id,
         hostPath: link,
-        guestPath: "/app/escape",
-      }),
-    ).rejects.toMatchObject({ code: "validation" });
-  });
-
-  it("publishes relative links that resolve inside the destination tree", async () => {
-    const root = await mkdtemp(join(tmpdir(), "sbox-sib-"));
-    const host = new FakeHost();
-    const id = seedRunning(host);
-    const link = join(root, "link");
-    await symlink("sibling", link);
-    await host.copyHostToGuest({
-      identity: id,
-      hostPath: link,
-      guestPath: "/app/link",
-    });
-    expect(host.filesystemFor(id).get("/app/link")).toEqual({
-      kind: "symlink",
-      target: "sibling",
-    });
-  });
+        guestPath: "/app/link",
+      });
+      expect(host.filesystemFor(id).get("/app/link")).toEqual({
+        kind: "symlink",
+        target: "sibling",
+      });
+    },
+  );
 
   it("rejects guest-to-host standalone escaping relative targets", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-g2h-link-"));
@@ -161,24 +170,27 @@ describe("standalone symlink transfer semantics", () => {
     ).rejects.toMatchObject({ code: "validation" });
   });
 
-  it("preserves valid relative links inside a transferred directory tree", async () => {
-    const root = await mkdtemp(join(tmpdir(), "sbox-tree-link-"));
-    const host = new FakeHost();
-    const id = seedRunning(host);
-    const src = join(root, "src");
-    await mkdir(src);
-    await writeFile(join(src, "target.txt"), "ok", "utf8");
-    await symlink("target.txt", join(src, "link.txt"));
-    await host.copyHostToGuest({ identity: id, hostPath: src, guestPath: "/tree" });
-    expect(host.filesystemFor(id).get("/tree/link.txt")).toEqual({
-      kind: "symlink",
-      target: "target.txt",
-    });
+  it.skipIf(process.platform === "win32")(
+    "preserves valid relative links inside a transferred directory tree",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "sbox-tree-link-"));
+      const host = new FakeHost();
+      const id = seedRunning(host);
+      const src = join(root, "src");
+      await mkdir(src);
+      await writeFile(join(src, "target.txt"), "ok", "utf8");
+      await symlink("target.txt", join(src, "link.txt"));
+      await host.copyHostToGuest({ identity: id, hostPath: src, guestPath: "/tree" });
+      expect(host.filesystemFor(id).get("/tree/link.txt")).toEqual({
+        kind: "symlink",
+        target: "target.txt",
+      });
 
-    const dest = join(root, "dest");
-    await host.copyGuestToHost({ identity: id, guestPath: "/tree", hostPath: dest });
-    expect(await readlink(join(dest, "link.txt"))).toBe("target.txt");
-  });
+      const dest = join(root, "dest");
+      await host.copyGuestToHost({ identity: id, guestPath: "/tree", hostPath: dest });
+      expect(await readlink(join(dest, "link.txt"))).toBe("target.txt");
+    },
+  );
 });
 
 describe("directory permission bit preservation", () => {

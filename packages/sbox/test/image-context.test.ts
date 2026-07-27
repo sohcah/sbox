@@ -60,7 +60,7 @@ describe("build context discovery", () => {
     expect(discovered.entries.some((entry) => entry.relativePath.startsWith(".git"))).toBe(true);
   });
 
-  it("rejects absolute and escaping symlinks", async () => {
+  it.skipIf(process.platform === "win32")("rejects absolute and escaping symlinks", async () => {
     const root = await seedContext();
     await symlink("/etc/passwd", join(root, "abs-link"));
     await expect(

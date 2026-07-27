@@ -33,11 +33,18 @@ describe("@sohcah/sbox-sandcastle declaration leak guard", () => {
       );
       await mkdir(join(consumerDir, "node_modules/@sohcah"), { recursive: true });
       await rm(join(consumerDir, "node_modules/@sohcah/sbox-sandcastle"), { force: true });
-      await symlink(packageRoot, join(consumerDir, "node_modules/@sohcah/sbox-sandcastle"));
+      // Junctions do not need Developer Mode / admin on Windows; plain dir symlinks do.
+      const linkType = process.platform === "win32" ? "junction" : "dir";
+      await symlink(
+        packageRoot,
+        join(consumerDir, "node_modules/@sohcah/sbox-sandcastle"),
+        linkType,
+      );
       await rm(join(consumerDir, "node_modules/@sohcah/sbox"), { force: true });
       await symlink(
         join(workspaceRoot, "packages/sbox"),
         join(consumerDir, "node_modules/@sohcah/sbox"),
+        linkType,
       );
 
       await writeFile(

@@ -166,7 +166,12 @@ describe("declaration leak guard", () => {
       await mkdir(join(consumerDir, "node_modules/@sohcah"), { recursive: true });
       await rm(join(consumerDir, "node_modules/@sohcah/sbox"), { force: true });
       const { symlink } = await import("node:fs/promises");
-      await symlink(packageRoot, join(consumerDir, "node_modules/@sohcah/sbox"));
+      // Junctions do not need Developer Mode / admin on Windows; plain dir symlinks do.
+      await symlink(
+        packageRoot,
+        join(consumerDir, "node_modules/@sohcah/sbox"),
+        process.platform === "win32" ? "junction" : "dir",
+      );
 
       await writeFile(
         join(consumerDir, "tsconfig.json"),

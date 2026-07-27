@@ -78,38 +78,41 @@ describe("FakeHost transfer contract", () => {
     expect(host.operations).toEqual(expect.arrayContaining(["copyHostToGuest", "copyGuestToHost"]));
   });
 
-  it("copies recursive directories and preserves the executable bit", async () => {
-    const root = await mkdtemp(join(tmpdir(), "sbox-xfer-dir-"));
-    const host = new FakeHost();
-    const id = seedRunning(host);
-    const src = join(root, "src");
-    await mkdir(join(src, "nested"), { recursive: true });
-    const script = join(src, "nested", "run.sh");
-    await writeFile(script, "#!/bin/sh\necho hi\n", "utf8");
-    await chmod(script, 0o755);
+  it.skipIf(process.platform === "win32")(
+    "copies recursive directories and preserves the executable bit",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "sbox-xfer-dir-"));
+      const host = new FakeHost();
+      const id = seedRunning(host);
+      const src = join(root, "src");
+      await mkdir(join(src, "nested"), { recursive: true });
+      const script = join(src, "nested", "run.sh");
+      await writeFile(script, "#!/bin/sh\necho hi\n", "utf8");
+      await chmod(script, 0o755);
 
-    await host.copyHostToGuest({
-      identity: id,
-      hostPath: src,
-      guestPath: "/app",
-    });
-    const node = host.filesystemFor(id).get("/app/nested/run.sh");
-    expect(node?.kind).toBe("file");
-    if (node?.kind === "file") {
-      expect(node.mode & 0o111).toBeTruthy();
-    }
+      await host.copyHostToGuest({
+        identity: id,
+        hostPath: src,
+        guestPath: "/app",
+      });
+      const node = host.filesystemFor(id).get("/app/nested/run.sh");
+      expect(node?.kind).toBe("file");
+      if (node?.kind === "file") {
+        expect(node.mode & 0o111).toBeTruthy();
+      }
 
-    const dest = join(root, "dest");
-    await host.copyGuestToHost({
-      identity: id,
-      guestPath: "/app",
-      hostPath: dest,
-    });
-    const st = await lstat(join(dest, "nested", "run.sh"));
-    expect(st.mode & 0o111).toBeTruthy();
-  });
+      const dest = join(root, "dest");
+      await host.copyGuestToHost({
+        identity: id,
+        guestPath: "/app",
+        hostPath: dest,
+      });
+      const st = await lstat(join(dest, "nested", "run.sh"));
+      expect(st.mode & 0o111).toBeTruthy();
+    },
+  );
 
-  it("preserves safe relative symlinks", async () => {
+  it.skipIf(process.platform === "win32")("preserves safe relative symlinks", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-xfer-link-"));
     const host = new FakeHost();
     const id = seedRunning(host);
@@ -163,7 +166,7 @@ describe("FakeHost transfer contract", () => {
     ).rejects.toMatchObject({ code: "validation" });
   });
 
-  it("rejects escaping symlink targets", async () => {
+  it.skipIf(process.platform === "win32")("rejects escaping symlink targets", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-xfer-esc-"));
     const host = new FakeHost();
     const id = seedRunning(host);
@@ -178,7 +181,7 @@ describe("FakeHost transfer contract", () => {
     ).rejects.toMatchObject({ code: "validation" });
   });
 
-  it("rejects special files", async () => {
+  it.skipIf(process.platform === "win32")("rejects special files", async () => {
     const host = new FakeHost();
     const id = seedRunning(host);
     const root = await mkdtemp(join(tmpdir(), "sbox-xfer-sock-"));

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseProjectConfig, isSboxError } from "../src/index.js";
@@ -26,14 +26,17 @@ const distLockModule = join(dirname(fileURLToPath(import.meta.url)), "../dist/vo
 
 describe("volume paths", () => {
   it("keeps managed paths under the data root", () => {
-    const root = "/tmp/sbox-vol-root";
+    // resolve() so Windows drive letters match volumePaths()/assertManagedHostPath().
+    const root = resolve(
+      process.platform === "win32" ? join(tmpdir(), "sbox-vol-root") : "/tmp/sbox-vol-root",
+    );
     const paths = volumePaths("demo", "cache", root);
     expect(paths.basePath).toBe(join(root, "demo", "cache", "base.qcow2"));
     expect(childOverlayPath("demo", "cache", "default", root)).toBe(
       join(root, "demo", "cache", "children", "default", "cache.qcow2"),
     );
     expect(assertManagedHostPath(paths.basePath, root)).toBe(paths.basePath);
-    expect(() => assertManagedHostPath("/etc/passwd", root)).toThrow();
+    expect(() => assertManagedHostPath(join(root, "..", "outside"), root)).toThrow();
   });
 
   it("builds portable maintenance instance ids", () => {

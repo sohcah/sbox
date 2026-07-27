@@ -20,10 +20,11 @@ grow into general workflow machinery.
 ## Formatting
 
 Blank bases are formatted via a pinned formatter image that already contains
-`mkfs.ext4` (default `sbox-volume-formatter:1` from
-`packages/sbox/formatter/Dockerfile`, override `SBOX_VOLUME_FORMATTER_IMAGE`).
-Host `qemu-img` is required only when volumes are used (`SBOX_QEMU_IMG`
-optional path override).
+`mkfs.ext4`. The default tag `sbox-volume-formatter:1` is **auto-built** from
+the shipped `formatter/Dockerfile` and loaded into Microsandbox on first volume
+ensure (requires Docker + `msb`). Override with `SBOX_VOLUME_FORMATTER_IMAGE`
+to supply an equivalent image (overrides are not auto-built). Host `qemu-img`
+is required only when volumes are used (`SBOX_QEMU_IMG` optional path override).
 
 ## Safety rules
 

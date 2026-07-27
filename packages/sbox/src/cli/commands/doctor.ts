@@ -150,7 +150,7 @@ export async function probeFormatterImagePresence(
   } catch {
     return {
       available: false,
-      detail: `formatter image missing: ${image}${override} (build packages/sbox/formatter/Dockerfile)`,
+      detail: `formatter image missing: ${image}${override} (auto-built on first volume ensure when using the default tag)`,
     };
   }
 }

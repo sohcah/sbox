@@ -28,6 +28,7 @@
     "!dist/**/*.tsbuildinfo",
     "!dist/fake-host.*",
     "!dist/fake-process.*",
+    "formatter",
     "README.md",
     "LICENSE"
   ],

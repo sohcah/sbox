@@ -2,8 +2,9 @@
  * Pinned formatter image + guest mkfs.ext4 for blank raw bases.
  *
  * The formatter image must already contain `mkfs.ext4` (no package install at
- * runtime — networking is disabled). Build from `formatter/Dockerfile` or set
- * `SBOX_VOLUME_FORMATTER_IMAGE` to an equivalent image.
+ * runtime — networking is disabled). The default tag is auto-built from the
+ * shipped `formatter/Dockerfile` on first use; set
+ * `SBOX_VOLUME_FORMATTER_IMAGE` to supply an equivalent image instead.
  *
  * The blank raw file is bind-mounted as a host directory (not attached as a
  * virtio-blk disk). Microsandbox tries to mount disk images at boot; an
@@ -16,6 +17,11 @@ import { randomBytes } from "node:crypto";
 import { SboxError, throwIfAborted } from "../errors.js";
 import type { NativeRuntime } from "../native-runtime.js";
 import type { HostNetworkConfig } from "../network/types.js";
+import { ensureFormatterImage } from "./ensure-formatter.js";
+import {
+  DEFAULT_VOLUME_FORMATTER_IMAGE,
+  volumeFormatterImage,
+} from "./formatter-image.js";
 import {
   qemuImgConvertRawToQcow2,
   qemuImgInfo,
@@ -23,25 +29,13 @@ import {
   type QemuImgPorts,
 } from "./qemu-img.js";
 
-/**
- * Default formatter image reference. Must ship `/sbin/mkfs.ext4` (or `mkfs.ext4`
- * on PATH). Built from `packages/sbox/formatter/Dockerfile`.
- */
-export const DEFAULT_VOLUME_FORMATTER_IMAGE = "sbox-volume-formatter:1";
+export { DEFAULT_VOLUME_FORMATTER_IMAGE, volumeFormatterImage };
 
 const DISABLED_NETWORK: HostNetworkConfig = Object.freeze({
   mode: "disabled",
   allow: Object.freeze([]),
   publish: Object.freeze([]),
 });
-
-export function volumeFormatterImage(): string {
-  const override = process.env["SBOX_VOLUME_FORMATTER_IMAGE"];
-  if (override !== undefined && override.length > 0) {
-    return override;
-  }
-  return DEFAULT_VOLUME_FORMATTER_IMAGE;
-}
 
 export interface FormatBasePorts {
   readonly runtime: NativeRuntime;
@@ -51,6 +45,13 @@ export interface FormatBasePorts {
     readonly argv: readonly string[];
     readonly signal?: AbortSignal;
   }) => Promise<{ readonly exitCode: number; readonly stderr: string }>;
+  /**
+   * Ensure the formatter image is available to Microsandbox before create.
+   * Defaults to {@link ensureFormatterImage} (auto-build the packaged default).
+   */
+  readonly ensureFormatterImage?: (options?: {
+    readonly signal?: AbortSignal;
+  }) => Promise<unknown>;
 }
 
 export interface FormatAndPublishBaseRequest {
@@ -89,6 +90,13 @@ export async function formatAndPublishBase(
   let created = false;
   try {
     await createBlankRawFile(rawPath, request.sizeBytes);
+
+    const ensure =
+      ports.ensureFormatterImage ??
+      ((opts?: { readonly signal?: AbortSignal }) => ensureFormatterImage(opts));
+    await ensure(
+      request.signal !== undefined ? { signal: request.signal } : undefined,
+    );
 
     const live = await ports.runtime.create({
       name: formatterName,
@@ -136,7 +144,7 @@ export async function formatAndPublishBase(
           stderr: mkfs.stderr.slice(0, 2048),
           formatterImage: volumeFormatterImage(),
           message:
-            "Formatter image must already contain mkfs.ext4; build packages/sbox/formatter/Dockerfile or set SBOX_VOLUME_FORMATTER_IMAGE.",
+            "Formatter image must contain mkfs.ext4; the default image is auto-built from formatter/Dockerfile, or set SBOX_VOLUME_FORMATTER_IMAGE.",
         },
       });
     }

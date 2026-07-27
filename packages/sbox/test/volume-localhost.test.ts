@@ -345,6 +345,7 @@ describe("LocalHost managed volumes", () => {
           runtime,
           qemuImg: failingQemu,
           execInSandbox: async () => ({ exitCode: 0, stderr: "" }),
+          ensureFormatterImage: async () => undefined,
         },
       ),
     ).rejects.toMatchObject({ code: "internal" });
@@ -382,6 +383,7 @@ describe("LocalHost managed volumes", () => {
         runtime,
         qemuImg: qemu.ports,
         execInSandbox: async () => ({ exitCode: 0, stderr: "" }),
+        ensureFormatterImage: async () => undefined,
       },
     );
 
@@ -414,6 +416,7 @@ describe("LocalHost managed volumes", () => {
         runtime,
         qemuImg: qemu.ports,
         execInSandbox: async () => ({ exitCode: 0, stderr: "" }),
+        ensureFormatterImage: async () => undefined,
       },
     );
     expect(ensured.created).toBe(true);

@@ -72,6 +72,14 @@ export {
 } from "./format-base.js";
 
 export {
+  clearEnsureFormatterImageCoalescing,
+  defaultFormatterDockerfilePath,
+  ensureFormatterImage,
+  type EnsureFormatterImagePorts,
+  type EnsureFormatterImageResult,
+} from "./ensure-formatter.js";
+
+export {
   ensureVolumeBase,
   ensureVolumeBaseLocked,
   type EnsureBasePorts,

@@ -9,10 +9,12 @@
 
 - [Microsandbox](https://github.com/superradcompany/microsandbox) runtime with
   hypervisor support on the machine
-- Docker CLI for Dockerfile-backed image builds / loads
+- Docker CLI for Dockerfile-backed image builds / loads (also used to
+  auto-build the default volume formatter image on first volume ensure)
 - `qemu-img` when using managed volumes
-- Formatter image for volume mkfs (build `packages/sbox/formatter/Dockerfile`
-  or set `SBOX_VOLUME_FORMATTER_IMAGE`)
+- Default volume formatter image (`sbox-volume-formatter:1`) is built
+  automatically from the package's `formatter/Dockerfile`; set
+  `SBOX_VOLUME_FORMATTER_IMAGE` to use a prebuilt equivalent instead
 
 ## Remote client only
 

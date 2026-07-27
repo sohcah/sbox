@@ -35,8 +35,9 @@ declarations, profile attachments, host-local bases under
 overlays on ordinary create, exclusive `volume shell` maintenance mounting the
 base directly, and CLI `volume list` / `volume shell` / `volume remove`. Bases
 are formatted via a pinned formatter image that already contains `mkfs.ext4`
-(default `sbox-volume-formatter:1` from `packages/sbox/formatter/Dockerfile`,
-override with `SBOX_VOLUME_FORMATTER_IMAGE`) plus host `qemu-img` (required
+(default `sbox-volume-formatter:1`, auto-built from the shipped
+`formatter/Dockerfile` on first volume ensure; override with
+`SBOX_VOLUME_FORMATTER_IMAGE`) plus host `qemu-img` (required
 only when volumes are used).
 
 Phase 5 remains in place for curated networking and runtime secrets: profile

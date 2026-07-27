@@ -355,7 +355,8 @@ Implement:
   Microsandbox sandbox directories;
 - QCOW2/ext4 volume definitions with logical size and profile attachment paths;
 - capability checks for host `qemu-img` only when volumes are used;
-- pinned formatter image containing `mkfs.ext4` and portable guest-side raw
+- pinned formatter image containing `mkfs.ext4` (default tag auto-built from
+  the shipped Dockerfile on first ensure) and portable guest-side raw
   formatting via bind-mounted staging (not unformatted virtio-blk);
 - temporary base creation, validation, conversion, and atomic final publication;
 - deterministic direct child creation and `qemu-img info` validation of format,
@@ -409,8 +410,9 @@ volume database or lineage manager.
   `\\.\pipe\sbox-vol-<hash>`) keyed by the logical base path — unused by
   lifecycle/image operations. Deep data roots must not hit `sun_path` limits.
 - Base create: blank raw → formatter guest bind-mounts the staging directory
-  (`SBOX_VOLUME_FORMATTER_IMAGE`, default `sbox-volume-formatter:1` from
-  `packages/sbox/formatter/Dockerfile`, which already contains `mkfs.ext4`) →
+  (`SBOX_VOLUME_FORMATTER_IMAGE`, default `sbox-volume-formatter:1`
+  auto-built from the shipped `formatter/Dockerfile` on first ensure, which
+  already contains `mkfs.ext4`) →
   guest `mkfs.ext4 -F` on the raw file → `qemu-img convert` → atomic rename.
   Formatter networking is disabled; packages are never installed at runtime.
   Raw virtio-blk without a mountable filesystem is not used (MSB boot fails).

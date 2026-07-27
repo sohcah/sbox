@@ -126,7 +126,7 @@ type YamlProfileInput = {
     readonly destinations: readonly string[];
   }[];
   readonly volumes?: readonly { readonly volume: string; readonly path: string }[];
-  readonly directories?: readonly {
+  readonly mounts?: readonly {
     readonly path: string;
     readonly mount: string;
     readonly source?: "client" | "host";
@@ -200,9 +200,9 @@ function normalizeYamlProjectInput(input: {
             })),
           }
         : {}),
-      ...(profile.directories !== undefined
+      ...(profile.mounts !== undefined
         ? {
-            directories: profile.directories.map((entry) => ({
+            mounts: profile.mounts.map((entry) => ({
               path: entry.path,
               mount: entry.mount,
               ...(entry.source !== undefined ? { source: entry.source } : {}),
@@ -341,9 +341,9 @@ export function toSafeProjectConfig(config: ProjectConfig): SafeProjectConfig {
             ),
           }
         : {}),
-      ...(profile.directories !== undefined
+      ...(profile.mounts !== undefined
         ? {
-            directories: profile.directories.map((entry) =>
+            mounts: profile.mounts.map((entry) =>
               Object.freeze({
                 path: entry.path,
                 mount: entry.mount,
@@ -561,10 +561,10 @@ function freezeProjectConfig(config: {
             ),
           }
         : {}),
-      ...(profile.directories !== undefined
+      ...(profile.mounts !== undefined
         ? {
-            directories: Object.freeze(
-              profile.directories.map((entry) =>
+            mounts: Object.freeze(
+              profile.mounts.map((entry) =>
                 Object.freeze({
                   path: entry.path,
                   mount: entry.mount,

@@ -20,7 +20,7 @@ import type {
   SafeRuntimeSecret,
 } from "./network/types.js";
 import type { HostVolumeAttachment, VolumeAttachmentSpec } from "./volume/types.js";
-import type { DirectoryAttachmentSpec, HostDirectoryMount } from "./directory/types.js";
+import type { HostMount, MountAttachmentSpec } from "./directory/types.js";
 
 export type KnownSandboxLifecycleState = "running" | "stopped" | "crashed" | "draining";
 
@@ -64,8 +64,8 @@ export interface HostCreateRequest {
    * Host ensures bases and creates children under the per-base lock.
    */
   readonly volumes?: readonly HostVolumeAttachment[];
-  /** Host directory mounts (Client/Host paths into the guest). */
-  readonly directories?: readonly HostDirectoryMount[];
+  /** Host mounts (Client/Host files or directories into the guest). */
+  readonly mounts?: readonly HostMount[];
 }
 
 export interface HostListOptions extends OperationOptions {
@@ -100,8 +100,8 @@ export interface SandboxCreationSettings {
   readonly secrets: readonly SafeRuntimeSecret[];
   /** Volume attachments (name + guest path only). */
   readonly volumes: readonly VolumeAttachmentSpec[];
-  /** Directory mounts (identity paths; never Directory stage paths). */
-  readonly directories: readonly DirectoryAttachmentSpec[];
+  /** Host mounts (identity paths; never Mount stage paths). */
+  readonly mounts: readonly MountAttachmentSpec[];
 }
 
 export interface SandboxInspection {

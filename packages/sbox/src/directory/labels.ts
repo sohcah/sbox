@@ -1,24 +1,22 @@
 /**
- * Encode/decode directory attachment specs on ownership labels for inspection.
+ * Encode/decode Host mount attachment specs on ownership labels for inspection.
  */
 
 import type { LabelMap } from "../ownership.js";
 import { OWNERSHIP_LABEL_KEYS } from "../ownership.js";
-import { canonicalDirectoriesFingerprint, type DirectoryAttachmentSpec } from "./types.js";
+import { canonicalMountsFingerprint, type MountAttachmentSpec, type MountKind } from "./types.js";
 
-export function directoriesLabelValue(directories: readonly DirectoryAttachmentSpec[]): string {
-  return Buffer.from(JSON.stringify(canonicalDirectoriesFingerprint(directories)), "utf8").toString(
+export function mountsLabelValue(mounts: readonly MountAttachmentSpec[]): string {
+  return Buffer.from(JSON.stringify(canonicalMountsFingerprint(mounts)), "utf8").toString(
     "base64url",
   );
 }
 
-export function directoriesFromLabels(
-  labels: LabelMap | undefined,
-): readonly DirectoryAttachmentSpec[] {
+export function mountsFromLabels(labels: LabelMap | undefined): readonly MountAttachmentSpec[] {
   if (labels === undefined) {
     return [];
   }
-  const raw = labels[OWNERSHIP_LABEL_KEYS.directories];
+  const raw = labels[OWNERSHIP_LABEL_KEYS.mounts];
   if (raw === undefined || raw.length === 0) {
     return [];
   }
@@ -28,17 +26,19 @@ export function directoriesFromLabels(
     if (!Array.isArray(parsed)) {
       return [];
     }
-    const out: DirectoryAttachmentSpec[] = [];
+    const out: MountAttachmentSpec[] = [];
     for (const entry of parsed) {
       if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
         continue;
       }
       const record = entry as Record<string, unknown>;
+      const kind = record["kind"];
       if (
         (record["source"] !== "client" && record["source"] !== "host") ||
         typeof record["path"] !== "string" ||
         typeof record["mount"] !== "string" ||
-        typeof record["readonly"] !== "boolean"
+        typeof record["readonly"] !== "boolean" ||
+        (kind !== "file" && kind !== "directory")
       ) {
         continue;
       }
@@ -47,11 +47,17 @@ export function directoriesFromLabels(
         path: record["path"],
         mount: record["mount"],
         readonly: record["readonly"],
+        kind: kind as MountKind,
         ...(typeof record["quotaMiB"] === "number" ? { quotaMiB: record["quotaMiB"] } : {}),
       });
     }
-    return Object.freeze(canonicalDirectoriesFingerprint(out));
+    return Object.freeze(canonicalMountsFingerprint(out));
   } catch {
     return [];
   }
 }
+
+/** @deprecated Use mountsLabelValue */
+export const directoriesLabelValue = mountsLabelValue;
+/** @deprecated Use mountsFromLabels */
+export const directoriesFromLabels = mountsFromLabels;

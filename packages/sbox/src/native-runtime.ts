@@ -22,12 +22,12 @@ export interface NativeDiskMount {
   readonly fstype: "ext4" | null;
 }
 
-/** Host directory bind. */
+/** Host file or directory bind. */
 export interface NativeBindMount {
   readonly guestPath: string;
   readonly hostPath: string;
   readonly readonly: boolean;
-  /** Guest-write quota in MiB; required when readonly is false. */
+  /** Guest-write quota in MiB; optional when writable (MSB protective default). */
   readonly quotaMiB?: number;
 }
 

@@ -53,8 +53,8 @@ import type {
   HostVolumeSummary,
 } from "../volume/types.js";
 import { BoundedAsyncQueue, DEFAULT_STREAM_QUEUE_CAPACITY } from "../process/bounded-queue.js";
-import { packClientDirectoryArchive } from "../directory/stages.js";
-import { assertHostDirectoryMounts } from "../directory/validate.js";
+import { packClientMountArchive } from "../directory/stages.js";
+import { assertHostMounts } from "../directory/validate.js";
 import { decodeTransferArchive, encodeTransferArchive } from "./archive-wire.js";
 import { bytesToBase64, decodeProcessResult, encodeProcessResult, base64ToBytes } from "./bytes.js";
 import { resolveRemoteLimits, type RemoteLimits } from "./limits.js";
@@ -94,20 +94,22 @@ class RemoteHostImpl implements Host {
 
   async create(request: HostCreateRequest, options?: OperationOptions): Promise<SandboxInspection> {
     throwIfAborted(options?.signal);
-    assertHostDirectoryMounts(request.directories, request.volumes);
+    assertHostMounts(request.mounts, request.volumes);
     const wireRequest = stripBindHostPaths(request);
-    const archive = await packClientDirectoryArchive(
-      wireRequest.directories ?? [],
+    const packed = await packClientMountArchive(
+      wireRequest.mounts ?? [],
       options?.signal !== undefined ? { signal: options.signal } : {},
     );
-    const body = encodeTransferArchive(archive);
+    const createRequest =
+      packed.mounts.length > 0 ? { ...wireRequest, mounts: packed.mounts } : wireRequest;
+    const body = encodeTransferArchive(packed.archive);
     const response = await this.fetchRaw(
       "POST",
       "/v1/sandboxes",
       body,
       {
         "content-type": "application/octet-stream",
-        "x-sbox-create-request": Buffer.from(JSON.stringify(wireRequest), "utf8").toString(
+        "x-sbox-create-request": Buffer.from(JSON.stringify(createRequest), "utf8").toString(
           "base64url",
         ),
       },
@@ -910,17 +912,18 @@ function enc(value: string): string {
 
 /** `bindHostPath` is server-only; never send it on the wire. */
 function stripBindHostPaths(request: HostCreateRequest): HostCreateRequest {
-  const directories = request.directories;
-  if (directories === undefined || directories.length === 0) {
+  const mounts = request.mounts;
+  if (mounts === undefined || mounts.length === 0) {
     return request;
   }
   return {
     ...request,
-    directories: directories.map((entry) => ({
+    mounts: mounts.map((entry) => ({
       source: entry.source,
       path: entry.path,
       mount: entry.mount,
       readonly: entry.readonly,
+      ...(entry.kind !== undefined ? { kind: entry.kind } : {}),
       ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
     })),
   };

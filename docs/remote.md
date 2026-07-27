@@ -18,14 +18,13 @@ sbox serve --bind 127.0.0.1 --port 8787
 sbox serve --bind 0.0.0.0 --port 8787 --allow-non-loopback
 ```
 
-- Protocol version: `SBOX_PROTOCOL_VERSION` = `2`
+- Protocol version: `SBOX_PROTOCOL_VERSION` = `3`
 - `GET /health` is unauthenticated (liveness + integer version only)
 - Every other HTTP route and WebSocket upgrade requires `Authorization: Bearer …`
 - Create (`POST /v1/sandboxes`) sends create metadata in `x-sbox-create-request`
-  (base64url JSON) and an optional transfer-archive body for Client directory
-  mounts; the server stages those trees, then binds. Host-sourced directory
-  mounts are validated on the serve machine. Stages are deleted on remove or
-  failed create.
+  (base64url JSON) and an optional transfer-archive body for Client Host mounts;
+  the server stages those files/directories, then binds. Host-sourced mounts are
+  validated on the serve machine. Stages are deleted on remove or failed create.
 - Graceful shutdown cancels controlled work and leaves ordinary sandboxes
 
 ## Client target

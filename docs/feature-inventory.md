@@ -15,7 +15,7 @@ a **bounded helper** in `sbox`, or a **deliberate exclusion** (`docs/non-goals.m
 | OCI image reference | Delegation | As-is to Microsandbox |
 | Default-deny / allow / publish | Helper → delegation | Curated network DTO |
 | Runtime secrets interception | Helper → delegation | Values never logged |
-| Host directory mounts | Helper → delegation | Profile `directories:`; remote stages Client trees (protocol v2) |
+| Host mounts | Helper → delegation | Profile `mounts:` (file or directory); remote stages Client paths (protocol v3) |
 | QCOW2 base + child overlay | Helper + qemu-img + formatter | One lock per base |
 | `volume shell` exclusive base | Helper | Maintenance only |
 | Exact argv exec / stream | Delegation | Byte events |
@@ -24,7 +24,7 @@ a **bounded helper** in `sbox`, or a **deliberate exclusion** (`docs/non-goals.m
 | Collected UTF-8 / limits | Helper | Default 10 MiB |
 | PTY | Helper | Private agent protocol adapter |
 | File/dir transfer | Helper | Archive for remote; no sync/watch |
-| Remote HTTP/WS Host | Helper | Auth + protocol v2 |
+| Remote HTTP/WS Host | Helper | Auth + protocol v3 |
 | `sbox serve` | Helper | Foreground; no install service |
 | CLI lifecycle/process/image/volume | Helper | Exact identities; no prune |
 | `run` unique create/exec/remove | Helper | finally cleanup |

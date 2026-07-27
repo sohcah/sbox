@@ -97,8 +97,8 @@ function parseReport(stdout: string): AcceptanceReport {
   return JSON.parse(line) as AcceptanceReport;
 }
 
-describe("local Host directory mounts acceptance", () => {
-  it("RO client + RO/RW host mounts, drift, bad roots, and bind decode after restart", async ({
+describe("local Host mounts acceptance", () => {
+  it("RO client file/dir + RO/RW host mounts, drift, bad roots, and bind decode after restart", async ({
     skip,
   }) => {
     const forced = process.env["SBOX_ACCEPTANCE_FORCE"];
@@ -118,18 +118,22 @@ describe("local Host directory mounts acceptance", () => {
     const root = await mkdtemp(disposableTempPrefix());
     const home = join(root, "h");
     const vendor = join(root, "vendor");
+    const configFile = join(root, "config.json");
     const toolsRo = join(root, "tools-ro");
     const toolsRw = join(root, "tools-rw");
+    const toolsRwNoQuota = join(root, "tools-rw-noquota");
     const realDir = join(root, "real");
     const linkDir = join(root, "link");
     await mkdir(home);
     await mkdir(vendor);
     await mkdir(toolsRo);
     await mkdir(toolsRw);
+    await mkdir(toolsRwNoQuota);
     await mkdir(realDir);
     await symlink(realDir, linkDir);
     await writeFile(join(vendor, "marker.txt"), "vendor", "utf8");
-    const scriptPath = join(root, "directories.mjs");
+    await writeFile(configFile, "mounted-file-contents", "utf8");
+    const scriptPath = join(root, "mounts.mjs");
 
     await writeFile(
       scriptPath,
@@ -170,12 +174,14 @@ describe("local Host directory mounts acceptance", () => {
         };
 
         const vendor = ${JSON.stringify(vendor)};
+        const configFile = ${JSON.stringify(configFile)};
         const toolsRo = ${JSON.stringify(toolsRo)};
         const toolsRw = ${JSON.stringify(toolsRw)};
+        const toolsRwNoQuota = ${JSON.stringify(toolsRwNoQuota)};
         const linkDir = ${JSON.stringify(linkDir)};
 
         const identity = assertSandboxIdentity({
-          project: "accept-dir",
+          project: "accept-mounts",
           profile: "default",
           instance: "t" + process.pid,
         });
@@ -212,7 +218,7 @@ describe("local Host directory mounts acceptance", () => {
               () => host.create({
                 identity,
                 image: "alpine:3.20",
-                directories: [{ source: "client", path: linkDir, mount: "/bad", readonly: true }],
+                mounts: [{ source: "client", path: linkDir, mount: "/bad", readonly: true }],
               }),
               /symlink/i,
             );
@@ -223,8 +229,9 @@ describe("local Host directory mounts acceptance", () => {
               cpus: 1,
               memoryMiB: 512,
               workdir: "/root",
-              directories: [
+              mounts: [
                 { source: "client", path: vendor, mount: "/vendor", readonly: true },
+                { source: "client", path: configFile, mount: "/mounted-file", readonly: true },
                 { source: "host", path: toolsRo, mount: "/tools-ro", readonly: true },
                 {
                   source: "host",
@@ -233,25 +240,54 @@ describe("local Host directory mounts acceptance", () => {
                   readonly: false,
                   quotaMiB: 64,
                 },
+                {
+                  source: "host",
+                  path: toolsRwNoQuota,
+                  mount: "/tools-rw-noquota",
+                  readonly: false,
+                },
               ],
             });
 
-            const dirs = created.creation.directories;
-            if (dirs.length !== 3) {
-              throw new Error("expected 3 directory mounts, got " + dirs.length);
+            const mounts = created.creation.mounts;
+            if (mounts.length !== 5) {
+              throw new Error("expected 5 Host mounts, got " + mounts.length);
             }
-            const byMount = Object.fromEntries(dirs.map((d) => [d.mount, d]));
-            if (byMount["/vendor"]?.readonly !== true || byMount["/vendor"]?.source !== "client") {
-              throw new Error("client mount projection mismatch");
+            const byMount = Object.fromEntries(mounts.map((d) => [d.mount, d]));
+            if (
+              byMount["/vendor"]?.readonly !== true ||
+              byMount["/vendor"]?.source !== "client" ||
+              byMount["/vendor"]?.kind !== "directory"
+            ) {
+              throw new Error("client directory mount projection mismatch");
             }
-            if (byMount["/tools-ro"]?.readonly !== true || byMount["/tools-ro"]?.source !== "host") {
+            if (
+              byMount["/mounted-file"]?.readonly !== true ||
+              byMount["/mounted-file"]?.source !== "client" ||
+              byMount["/mounted-file"]?.kind !== "file"
+            ) {
+              throw new Error("client file mount projection mismatch");
+            }
+            if (
+              byMount["/tools-ro"]?.readonly !== true ||
+              byMount["/tools-ro"]?.source !== "host" ||
+              byMount["/tools-ro"]?.kind !== "directory"
+            ) {
               throw new Error("host RO mount projection mismatch");
             }
             if (
               byMount["/tools-rw"]?.readonly !== false ||
-              byMount["/tools-rw"]?.quotaMiB !== 64
+              byMount["/tools-rw"]?.quotaMiB !== 64 ||
+              byMount["/tools-rw"]?.kind !== "directory"
             ) {
               throw new Error("host RW mount projection mismatch");
+            }
+            if (
+              byMount["/tools-rw-noquota"]?.readonly !== false ||
+              byMount["/tools-rw-noquota"]?.quotaMiB !== undefined ||
+              byMount["/tools-rw-noquota"]?.kind !== "directory"
+            ) {
+              throw new Error("host RW no-quota mount projection mismatch");
             }
 
             const handle = await runtime.get(nativeName);
@@ -260,11 +296,17 @@ describe("local Host directory mounts acceptance", () => {
             if (bindByGuest["/vendor"]?.readonly !== true) {
               throw new Error("native bind /vendor not readonly");
             }
+            if (bindByGuest["/mounted-file"]?.readonly !== true) {
+              throw new Error("native bind /mounted-file not readonly");
+            }
             if (bindByGuest["/tools-ro"]?.readonly !== true) {
               throw new Error("native bind /tools-ro not readonly");
             }
             if (bindByGuest["/tools-rw"]?.readonly !== false || bindByGuest["/tools-rw"]?.quotaMiB !== 64) {
               throw new Error("native bind /tools-rw mode/quota mismatch");
+            }
+            if (bindByGuest["/tools-rw-noquota"]?.readonly !== false) {
+              throw new Error("native bind /tools-rw-noquota not writable");
             }
             if (bindByGuest["/vendor"]?.hostPath !== vendor) {
               throw new Error("native bind /vendor host path mismatch");
@@ -272,10 +314,18 @@ describe("local Host directory mounts acceptance", () => {
 
             const exec = await host.execArgv({
               identity,
-              argv: ["sh", "-c", "test -f /vendor/marker.txt && test -d /tools-ro && test -d /tools-rw"],
+              argv: [
+                "sh",
+                "-c",
+                "test -f /vendor/marker.txt && test -f /mounted-file && cat /mounted-file && test -d /tools-ro && test -d /tools-rw && test -d /tools-rw-noquota",
+              ],
             });
             if (exec.exitCode !== 0) {
               throw new Error("guest mount paths missing (exit " + exec.exitCode + ")");
+            }
+            const stdout = new TextDecoder().decode(exec.stdout);
+            if (!stdout.includes("mounted-file-contents")) {
+              throw new Error("RO file mount contents missing: " + stdout);
             }
 
             await host.stop(identity);
@@ -285,11 +335,11 @@ describe("local Host directory mounts acceptance", () => {
             const host2 = createLocalHostInternal({ runtime: runtime2 });
             try {
               const inspected = await host2.inspect(identity);
-              if (JSON.stringify(inspected.creation.directories) !== JSON.stringify(dirs)) {
-                throw new Error("directory projection drift after restart boundary");
+              if (JSON.stringify(inspected.creation.mounts) !== JSON.stringify(mounts)) {
+                throw new Error("Host mount projection drift after restart boundary");
               }
               const record = await runtime2.get(nativeName);
-              if (record.bindMounts.length !== 3) {
+              if (record.bindMounts.length !== 5) {
                 throw new Error("bindMounts not decoded after restart: " + record.bindMounts.length);
               }
               const drifted = await host2.create({
@@ -299,21 +349,21 @@ describe("local Host directory mounts acceptance", () => {
                   instance: identity.instance + "-drift",
                 },
                 image: "alpine:3.20",
-                directories: [
+                mounts: [
                   { source: "client", path: vendor, mount: "/vendor", readonly: true },
                 ],
               }).catch(() => null);
-              // Drift check against existing: up-style already-exists with different dirs.
+              // Drift check against existing: up-style already-exists with different mounts.
               await expectReject(
                 () => host2.create({
                   identity,
                   image: "alpine:3.20",
-                  directories: [
+                  mounts: [
                     { source: "client", path: vendor, mount: "/vendor", readonly: true },
                     { source: "host", path: toolsRo, mount: "/tools-ro", readonly: true },
                   ],
                 }),
-                /ownership|configuration|already exists|creation|directories|immutable|conflict/i,
+                /ownership|configuration|already exists|creation|mounts|immutable|conflict/i,
               );
               if (drifted !== null) {
                 await host2.remove({

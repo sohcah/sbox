@@ -1,11 +1,24 @@
 /**
- * Directory mount helpers.
+ * Host mount helpers.
  */
 
-export type { DirectoryAttachmentSpec, DirectoryMountSource, HostDirectoryMount } from "./types.js";
-export { canonicalDirectoriesFingerprint } from "./types.js";
-export { normalizeDirectoryMountConfig, type RequiredDirectoryMount } from "./normalize.js";
-export { assertBindableDirectory } from "./assert-directory.js";
+export type {
+  DirectoryAttachmentSpec,
+  DirectoryMountSource,
+  HostDirectoryMount,
+  HostMount,
+  MountAttachmentSpec,
+  MountKind,
+  MountSource,
+} from "./types.js";
+export { canonicalDirectoriesFingerprint, canonicalMountsFingerprint } from "./types.js";
+export {
+  normalizeDirectoryMountConfig,
+  normalizeHostMountConfig,
+  type RequiredDirectoryMount,
+  type RequiredHostMount,
+} from "./normalize.js";
+export { assertBindableDirectory, assertBindablePath } from "./assert-directory.js";
 export {
   expandHomePrefix,
   isAbsoluteHostPath,
@@ -14,10 +27,16 @@ export {
 } from "./home-path.js";
 export {
   bindMountsMatchDirectories,
+  bindMountsMatchHostMounts,
   canonicalBindMountFingerprint,
   decodeBindMounts,
 } from "./decode-binds.js";
-export { directoriesFromLabels, directoriesLabelValue } from "./labels.js";
+export {
+  directoriesFromLabels,
+  directoriesLabelValue,
+  mountsFromLabels,
+  mountsLabelValue,
+} from "./labels.js";
 export {
   defaultDirectoryStageRoot,
   directoryStageGenerationRoot,
@@ -26,9 +45,12 @@ export {
 } from "./paths.js";
 export {
   materializeClientDirectoryStages,
+  materializeClientMountStages,
   packClientDirectoryArchive,
+  packClientMountArchive,
   removeDirectoryStageGeneration,
   removeDirectoryStages,
   type MaterializedDirectoryStages,
+  type MaterializedMountStages,
 } from "./stages.js";
-export { assertHostDirectoryMounts } from "./validate.js";
+export { assertHostDirectoryMounts, assertHostMounts, assertMountKind } from "./validate.js";

@@ -218,7 +218,7 @@ class HostSboxClient implements SboxClient {
         return new HostSandboxHandle(host, created.identity);
       }
 
-      reportCreationDrift(intent.identity, intent.projected, existing);
+      reportCreationDrift(intent.identity, intent.projected, existing, intent.request.mounts);
 
       if (existing.state === "running") {
         return new HostSandboxHandle(host, existing.identity);

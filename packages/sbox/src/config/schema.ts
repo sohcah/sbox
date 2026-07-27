@@ -48,7 +48,7 @@ const volumeAttachmentSchema = z.strictObject({
   path: absoluteGuestPathSchema,
 });
 
-const directoryMountSchema = z
+const hostMountSchema = z
   .strictObject({
     path: z.string().min(1),
     mount: absoluteGuestPathSchema,
@@ -73,21 +73,14 @@ const directoryMountSchema = z
       ctx.addIssue({
         code: "custom",
         path: ["readonly"],
-        message: "Client-sourced directory mounts must be read-only.",
+        message: "Client-sourced Host mounts must be read-only.",
       });
     }
     if (readonly && value.quota !== undefined) {
       ctx.addIssue({
         code: "custom",
         path: ["quota"],
-        message: "Quota is only allowed for writable Host directory mounts.",
-      });
-    }
-    if (!readonly && value.quota === undefined) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["quota"],
-        message: "Writable Host directory mounts require an explicit quota.",
+        message: "Quota is only allowed for writable Host mounts.",
       });
     }
   });
@@ -244,7 +237,7 @@ const profileCommonFields = {
   network: networkConfigSchema.optional(),
   secrets: z.array(runtimeSecretConfigSchema).optional(),
   volumes: z.array(volumeAttachmentSchema).optional(),
-  directories: z.array(directoryMountSchema).optional(),
+  mounts: z.array(hostMountSchema).optional(),
 } as const;
 
 function refineImageOrBuild(
@@ -371,7 +364,7 @@ export const yamlProfileInputSchema = z
     network: networkConfigSchema.optional(),
     secrets: z.array(runtimeSecretConfigSchema).optional(),
     volumes: z.array(volumeAttachmentSchema).optional(),
-    directories: z.array(directoryMountSchema).optional(),
+    mounts: z.array(hostMountSchema).optional(),
   })
   .superRefine((value, ctx) => {
     refineImageOrBuild(value, ctx);
@@ -399,7 +392,7 @@ export const yamlProjectInputSchema = z
       });
     }
     refineProfileVolumeAttachments(value, ctx);
-    refineProfileDirectoryMounts(value, ctx);
+    refineProfileHostMounts(value, ctx);
     for (const [name, profile] of Object.entries(value.profiles)) {
       if (profile.memory !== undefined && profile.memoryMiB !== undefined) {
         ctx.addIssue({
@@ -439,7 +432,7 @@ function refineProfileVolumeAttachments(
           readonly volumes?:
             | readonly { readonly volume: string; readonly path: string }[]
             | undefined;
-          readonly directories?: readonly { readonly mount: string }[] | undefined;
+          readonly mounts?: readonly { readonly mount: string }[] | undefined;
         }
       >
     >;
@@ -484,7 +477,7 @@ function refineProfileVolumeAttachments(
   }
 }
 
-function refineProfileDirectoryMounts(
+function refineProfileHostMounts(
   value: {
     readonly profiles: Readonly<
       Record<
@@ -493,7 +486,7 @@ function refineProfileDirectoryMounts(
           readonly volumes?:
             | readonly { readonly volume: string; readonly path: string }[]
             | undefined;
-          readonly directories?: readonly { readonly mount: string }[] | undefined;
+          readonly mounts?: readonly { readonly mount: string }[] | undefined;
         }
       >
     >;
@@ -505,18 +498,18 @@ function refineProfileDirectoryMounts(
     for (const attachment of profile.volumes ?? []) {
       seenPaths.add(attachment.path);
     }
-    const directories = profile.directories;
-    if (directories === undefined) {
+    const mounts = profile.mounts;
+    if (mounts === undefined) {
       continue;
     }
-    for (let i = 0; i < directories.length; i += 1) {
-      const entry = directories[i]!;
-      const pathPrefix = ["profiles", profileName, "directories", i] as const;
+    for (let i = 0; i < mounts.length; i += 1) {
+      const entry = mounts[i]!;
+      const pathPrefix = ["profiles", profileName, "mounts", i] as const;
       if (seenPaths.has(entry.mount)) {
         ctx.addIssue({
           code: "custom",
           path: [...pathPrefix, "mount"],
-          message: `Guest path "${entry.mount}" is already used by a volume or directory mount.`,
+          message: `Guest path "${entry.mount}" is already used by a volume or Host mount.`,
         });
       }
       seenPaths.add(entry.mount);

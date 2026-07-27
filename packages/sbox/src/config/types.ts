@@ -33,8 +33,8 @@ export interface VolumeAttachment {
   readonly path: string;
 }
 
-/** Profile Host directory mount (Client or Host path into the guest). */
-export interface DirectoryMountConfig {
+/** Profile Host mount (Client or Host file/directory into the guest). */
+export interface HostMountConfig {
   /** Client or Host filesystem path (see `source`). */
   readonly path: string;
   /** Absolute guest mount path. */
@@ -43,18 +43,24 @@ export interface DirectoryMountConfig {
   readonly source?: "client" | "host";
   /** Default `true`. Writable only when `source: host`. */
   readonly readonly?: boolean;
-  /** Binary size string; required when writable. */
+  /** Binary size string; optional for writable Host mounts (MSB protective default). */
   readonly quota?: string;
 }
 
-/** Safe projection of a directory mount. */
-export interface SafeDirectoryMount {
+/** @deprecated Use HostMountConfig */
+export type DirectoryMountConfig = HostMountConfig;
+
+/** Safe projection of a Host mount. */
+export interface SafeHostMount {
   readonly path: string;
   readonly mount: string;
   readonly source: "client" | "host";
   readonly readonly: boolean;
   readonly quota?: string;
 }
+
+/** @deprecated Use SafeHostMount */
+export type SafeDirectoryMount = SafeHostMount;
 
 /**
  * Dockerfile-backed build definition. Mutually exclusive with `image`.
@@ -102,8 +108,8 @@ export interface ProfileCommon {
   readonly secrets?: readonly RuntimeSecretConfig[];
   /** Attachments of project-declared volumes (ordinary sandboxes get child overlays). */
   readonly volumes?: readonly VolumeAttachment[];
-  /** Host directory mounts (Client/Host paths into the guest). */
-  readonly directories?: readonly DirectoryMountConfig[];
+  /** Host mounts (Client/Host files or directories into the guest). */
+  readonly mounts?: readonly HostMountConfig[];
 }
 
 /** Existing OCI/native image reference profile. */
@@ -190,7 +196,7 @@ export interface SafeProjectConfig {
         readonly network?: SafeNetworkConfig;
         readonly secrets?: readonly SafeRuntimeSecret[];
         readonly volumes?: readonly VolumeAttachment[];
-        readonly directories?: readonly SafeDirectoryMount[];
+        readonly mounts?: readonly SafeHostMount[];
       }
     >
   >;

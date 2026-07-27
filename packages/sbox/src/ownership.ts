@@ -16,8 +16,8 @@ export const OWNERSHIP_LABEL_KEYS = Object.freeze({
   instance: "dev.sohcah.sbox/instance",
   profile: "dev.sohcah.sbox/profile",
   creation: "dev.sohcah.sbox/creation",
-  /** Base64url JSON of canonical DirectoryAttachmentSpec[] for inspection. */
-  directories: "dev.sohcah.sbox/directories",
+  /** Base64url JSON of canonical MountAttachmentSpec[] for inspection. */
+  mounts: "dev.sohcah.sbox/mounts",
 } as const);
 
 export const MANAGED_LABEL_VALUE = "true";
@@ -80,7 +80,7 @@ export function hasPartialReservedLabels(labels: LabelMap | undefined): boolean 
   if (labels === undefined) {
     return false;
   }
-  // directories is optional (absent when unused); do not treat it as required evidence.
+  // mounts is optional (absent when unused); do not treat it as required evidence.
   const keys = [
     OWNERSHIP_LABEL_KEYS.managed,
     OWNERSHIP_LABEL_KEYS.project,

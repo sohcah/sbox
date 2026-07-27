@@ -34,9 +34,11 @@ profiles:
     volumes:
       - volume: cache
         path: /cache
-    directories:
+    mounts:
       - path: ./vendor
         mount: /vendor
+      - path: ./config.json
+        mount: /etc/app/config.json
       - path: /var/cache/tools
         source: host
         mount: /tools
@@ -64,22 +66,24 @@ Dockerfile-backed profiles use `build:` instead of `image:` (context +
 optional dockerfile path). Ordinary environment and build args may be literal
 or external refs (`env` / `file` / `invocation`).
 
-## Host directory mounts
+## Host mounts
 
-Profile `directories:` attach a Client or Host directory into the guest at
-create time (immutable creation; no live refresh or copy-back).
+Profile `mounts:` attach a Client or Host file or directory into the guest at
+create time (immutable creation; no live refresh or copy-back). Kind (file vs
+directory) is inferred at create from the real path — not a YAML field.
+`directories:` is rejected.
 
 | Field | Default | Notes |
 | --- | --- | --- |
 | `path` | required | Client: relative to project config dir (`~/…` → home; absolute allowed). Host: absolute on the Host, or `~/…` expanded on the Host. |
-| `mount` | required | Absolute guest path; unique across `directories` and `volumes`. |
+| `mount` | required | Absolute guest path; unique across `mounts` and `volumes`. |
 | `source` | `client` | `client` or `host`. |
 | `readonly` | `true` | Client sources must stay read-only. |
-| `quota` | — | Required when `readonly: false` (Host writable only). |
+| `quota` | — | Optional when `readonly: false` (Host writable only). Omit to accept Microsandbox’s protective default. |
 
-At create, the path must exist as a real directory (symlink roots rejected).
-On a remote target, Client trees are staged once onto the serve Host, then
-bound read-only; Host paths are validated on the serve machine.
+At create, the path must exist as a real file or directory (symlink roots
+rejected). On a remote target, Client paths are staged once onto the serve Host,
+then bound read-only; Host paths are validated on the serve machine.
 
 ## User targets
 

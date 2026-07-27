@@ -80,16 +80,16 @@ export function canonicalBindMountFingerprint(binds: readonly NativeBindMount[])
   );
 }
 
-export function bindMountsMatchDirectories(
+export function bindMountsMatchHostMounts(
   bindMounts: readonly NativeBindMount[],
-  directories: readonly {
+  mounts: readonly {
     readonly mount: string;
     readonly readonly: boolean;
     readonly quotaMiB?: number;
   }[],
 ): boolean {
   const expected = canonicalBindMountFingerprint(
-    directories.map((entry) => ({
+    mounts.map((entry) => ({
       guestPath: entry.mount,
       hostPath: "",
       readonly: entry.readonly,
@@ -99,3 +99,6 @@ export function bindMountsMatchDirectories(
   const actual = canonicalBindMountFingerprint(bindMounts);
   return JSON.stringify(actual) === JSON.stringify(expected);
 }
+
+/** @deprecated Use bindMountsMatchHostMounts */
+export const bindMountsMatchDirectories = bindMountsMatchHostMounts;

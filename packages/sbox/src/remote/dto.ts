@@ -78,12 +78,13 @@ const volumeAttachmentSchema = z.object({
   sizeBytes: z.number().int().positive(),
 });
 
-const directoryMountSchema = z
+const hostMountSchema = z
   .object({
     source: z.enum(["client", "host"]),
     path: z.string().min(1),
     mount: z.string().min(1),
     readonly: z.boolean(),
+    kind: z.enum(["file", "directory"]).optional(),
     quotaMiB: z.number().int().positive().optional(),
   })
   .superRefine((value, ctx) => {
@@ -100,21 +101,14 @@ const directoryMountSchema = z
       ctx.addIssue({
         code: "custom",
         path: ["readonly"],
-        message: "Client-sourced directory mounts must be read-only.",
+        message: "Client-sourced Host mounts must be read-only.",
       });
     }
     if (value.readonly && value.quotaMiB !== undefined) {
       ctx.addIssue({
         code: "custom",
         path: ["quotaMiB"],
-        message: "Quota is only allowed for writable Host directory mounts.",
-      });
-    }
-    if (!value.readonly && value.quotaMiB === undefined) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["quotaMiB"],
-        message: "Writable Host directory mounts require an explicit quota.",
+        message: "Quota is only allowed for writable Host mounts.",
       });
     }
   });
@@ -134,7 +128,7 @@ export const createRequestSchema = z.object({
   network: hostNetworkSchema.optional(),
   secrets: z.array(resolvedSecretSchema).optional(),
   volumes: z.array(volumeAttachmentSchema).optional(),
-  directories: z.array(directoryMountSchema).optional(),
+  mounts: z.array(hostMountSchema).optional(),
 });
 
 export const listSandboxesQuerySchema = z.object({

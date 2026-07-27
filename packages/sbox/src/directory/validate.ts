@@ -1,21 +1,21 @@
 /**
- * HostCreateRequest directory mount invariants (trust boundary).
+ * HostCreateRequest mount invariants (trust boundary).
  */
 
 import { isAbsoluteGuestPath } from "../config/scalars.js";
 import { SboxError } from "../errors.js";
 import { isAbsoluteOrHomeRelativeHostPath } from "./home-path.js";
-import type { HostDirectoryMount } from "./types.js";
+import type { HostMount, MountKind } from "./types.js";
 
 /**
  * Enforce product invariants on every create request (local and remote decode).
  * Does not check filesystem existence — that remains create-time bind prep.
  */
-export function assertHostDirectoryMounts(
-  directories: readonly HostDirectoryMount[] | undefined,
+export function assertHostMounts(
+  mounts: readonly HostMount[] | undefined,
   volumes?: readonly { readonly path: string }[],
 ): void {
-  if (directories === undefined || directories.length === 0) {
+  if (mounts === undefined || mounts.length === 0) {
     return;
   }
 
@@ -24,28 +24,28 @@ export function assertHostDirectoryMounts(
     seen.add(attachment.path);
   }
 
-  for (let i = 0; i < directories.length; i += 1) {
-    const entry = directories[i]!;
-    const prefix = `directories.${i}`;
+  for (let i = 0; i < mounts.length; i += 1) {
+    const entry = mounts[i]!;
+    const prefix = `mounts.${i}`;
 
     if (entry.source !== "client" && entry.source !== "host") {
-      throw SboxError.validation('Directory mount source must be "client" or "host".', {
+      throw SboxError.validation('Host mount source must be "client" or "host".', {
         details: { path: `${prefix}.source` },
       });
     }
     if (typeof entry.path !== "string" || entry.path.trim().length === 0) {
-      throw SboxError.validation("Directory mount path is required.", {
+      throw SboxError.validation("Host mount path is required.", {
         details: { path: `${prefix}.path` },
       });
     }
     if (typeof entry.mount !== "string" || !isAbsoluteGuestPath(entry.mount)) {
-      throw SboxError.validation("Directory mount guest path must be an absolute POSIX path.", {
+      throw SboxError.validation("Host mount guest path must be an absolute POSIX path.", {
         details: { path: `${prefix}.mount` },
       });
     }
     if (seen.has(entry.mount)) {
       throw SboxError.validation(
-        `Guest path "${entry.mount}" is already used by a volume or directory mount.`,
+        `Guest path "${entry.mount}" is already used by a volume or Host mount.`,
         { details: { path: `${prefix}.mount` } },
       );
     }
@@ -60,24 +60,33 @@ export function assertHostDirectoryMounts(
       );
     }
     if (entry.source === "client" && !entry.readonly) {
-      throw SboxError.validation("Client-sourced directory mounts must be read-only.", {
+      throw SboxError.validation("Client-sourced Host mounts must be read-only.", {
         details: { path: `${prefix}.readonly` },
       });
     }
     if (entry.readonly && entry.quotaMiB !== undefined) {
-      throw SboxError.validation("Quota is only allowed for writable Host directory mounts.", {
-        details: { path: `${prefix}.quotaMiB` },
-      });
-    }
-    if (!entry.readonly && entry.quotaMiB === undefined) {
-      throw SboxError.validation("Writable Host directory mounts require an explicit quota.", {
+      throw SboxError.validation("Quota is only allowed for writable Host mounts.", {
         details: { path: `${prefix}.quotaMiB` },
       });
     }
     if (entry.quotaMiB !== undefined && (!Number.isInteger(entry.quotaMiB) || entry.quotaMiB < 1)) {
-      throw SboxError.validation("Directory mount quotaMiB must be a positive integer.", {
+      throw SboxError.validation("Host mount quotaMiB must be a positive integer.", {
         details: { path: `${prefix}.quotaMiB` },
       });
     }
+    if (entry.kind !== undefined) {
+      assertMountKind(entry.kind, `${prefix}.kind`);
+    }
   }
 }
+
+export function assertMountKind(kind: unknown, detailPath: string): asserts kind is MountKind {
+  if (kind !== "file" && kind !== "directory") {
+    throw SboxError.validation('Host mount kind must be "file" or "directory".', {
+      details: { path: detailPath },
+    });
+  }
+}
+
+/** @deprecated Use assertHostMounts */
+export const assertHostDirectoryMounts = assertHostMounts;

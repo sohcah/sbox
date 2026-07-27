@@ -258,6 +258,10 @@ export type {
   DirectoryAttachmentSpec,
   DirectoryMountSource,
   HostDirectoryMount,
+  HostMount,
+  MountAttachmentSpec,
+  MountKind,
+  MountSource,
 } from "./directory/types.js";
 
 /** Documented CLI operational exit codes (the runner itself is not exported). */

@@ -45,7 +45,7 @@ import { listStaleImageWorkspaces } from "./image/workspace.js";
 import { createRedactingLogger, safeLog, silentLogger, type Logger } from "./logging.js";
 import { inspectOwnershipLabels } from "./ownership.js";
 import { buildOwnershipLabels } from "./ownership-adoption.js";
-import { assertHostDirectoryMounts } from "./directory/validate.js";
+import { assertHostMounts } from "./directory/validate.js";
 import { projectCreateRequest } from "./immutable-creation.js";
 import {
   FakeSandboxFilesystem,
@@ -170,7 +170,11 @@ export class FakeHost implements Host {
       }
 
       const timestamp = this.now().toISOString();
-      const projected = projectCreateRequest(request);
+      const mounts = (request.mounts ?? []).map((entry) => ({
+        ...entry,
+        kind: entry.kind ?? ("directory" as const),
+      }));
+      const projected = projectCreateRequest({ ...request, mounts });
       const network = this.allocateDynamicHostPorts(projected.network);
       const creation = creationFromProjection({ ...projected, network });
       const stored: StoredSandbox = {
@@ -702,7 +706,7 @@ export class FakeHost implements Host {
         network: toSafeNetworkConfig(defaultNetworkConfig()),
         secrets: [],
         volumes: [],
-        directories: [],
+        mounts: [],
       },
       env: {},
       maxDurationSecs: null,
@@ -784,6 +788,8 @@ export class FakeHost implements Host {
         destinations: secret.destinations,
         value: "",
       })),
+      volumes: stored.creation.volumes,
+      mounts: stored.creation.mounts,
     });
     return {
       identity: stored.identity,
@@ -851,7 +857,7 @@ export class FakeHost implements Host {
       });
     }
 
-    assertHostDirectoryMounts(request.directories, request.volumes);
+    assertHostMounts(request.mounts, request.volumes);
 
     // Capability-gated dynamic host ports (toggleable for unit tests).
     this.assertDynamicHostPortsSupported(network, this.dynamicHostPorts);
@@ -998,7 +1004,7 @@ function creationFromProjection(
     ),
     secrets: [...projected.secrets],
     volumes: [...projected.volumes],
-    directories: [...projected.directories],
+    mounts: [...projected.mounts],
   };
 }
 

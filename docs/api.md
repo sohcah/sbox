@@ -53,7 +53,7 @@ tests (`FakeHost` is package-private).
 
 ## Remote
 
-- `SBOX_PROTOCOL_VERSION` (`1`)
+- `SBOX_PROTOCOL_VERSION` (`3`)
 - `createSboxServer` / CLI `sbox serve`
 - Unauthenticated `GET /health`; authenticated handshake and all other routes
 

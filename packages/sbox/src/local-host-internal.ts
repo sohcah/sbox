@@ -53,10 +53,11 @@ import { mapNativeStatus } from "./native-runtime.js";
 import { buildOwnershipLabels, matchOwnedCreation } from "./ownership-adoption.js";
 import { inspectOwnershipLabels, type LabelMap } from "./ownership.js";
 import { projectCreateRequest, type ImmutableCreationProjection } from "./immutable-creation.js";
-import { assertBindableDirectory } from "./directory/assert-directory.js";
-import { directoriesFromLabels } from "./directory/labels.js";
+import { assertBindablePath } from "./directory/assert-directory.js";
+import { mountsFromLabels } from "./directory/labels.js";
 import { removeDirectoryStages } from "./directory/stages.js";
-import { assertHostDirectoryMounts } from "./directory/validate.js";
+import type { HostMount } from "./directory/types.js";
+import { assertHostMounts } from "./directory/validate.js";
 import { expandHomePrefix } from "./directory/home-path.js";
 import type {
   HostCopyPaths,
@@ -166,7 +167,8 @@ class LocalHost implements Host {
       const identity = assertSandboxIdentity(request.identity);
       this.validateCreateRequest(request);
       const nativeName = nativeSandboxName(identity.project, identity.instance);
-      const projected = projectCreateRequest(request);
+      const preparedMounts = await this.prepareMountBinds(request);
+      const projected = projectCreateRequest({ ...request, mounts: preparedMounts.mounts });
       const labels = buildOwnershipLabels(identity, projected);
 
       const preexisting = await this.tryGet(nativeName);
@@ -175,7 +177,7 @@ class LocalHost implements Host {
       }
 
       const volumePrep = await this.prepareCreateVolumes(identity, request, options?.signal);
-      const bindMounts = await this.prepareDirectoryBinds(request);
+      const bindMounts = preparedMounts.bindMounts;
       let published = false;
       try {
         const live = await this.runtime.create({
@@ -1116,35 +1118,42 @@ class LocalHost implements Host {
         labels: record.labels,
         dataRoot: this.volumeDataRoot,
       }),
-      directories: [...directoriesFromLabels(record.labels)],
+      mounts: [...mountsFromLabels(record.labels)],
     };
   }
 
-  private async prepareDirectoryBinds(
-    request: HostCreateRequest,
-  ): Promise<readonly NativeBindMount[]> {
-    const entries = request.directories ?? [];
+  private async prepareMountBinds(request: HostCreateRequest): Promise<{
+    readonly mounts: readonly HostMount[];
+    readonly bindMounts: readonly NativeBindMount[];
+  }> {
+    const entries = request.mounts ?? [];
     if (entries.length === 0) {
-      return [];
+      return { mounts: Object.freeze([]), bindMounts: Object.freeze([]) };
     }
-    const out: NativeBindMount[] = [];
+    const mounts: HostMount[] = [];
+    const bindMounts: NativeBindMount[] = [];
     for (let i = 0; i < entries.length; i += 1) {
       const entry = entries[i]!;
       const hostPath = expandHomePrefix(entry.bindHostPath ?? entry.path);
-      await assertBindableDirectory(hostPath, `directories.${i}.path`);
-      if (!entry.readonly && entry.quotaMiB === undefined) {
-        throw SboxError.validation("Writable directory mounts require quotaMiB.", {
-          details: { path: `directories.${i}.quota` },
-        });
+      const kind = await assertBindablePath(hostPath, `mounts.${i}.path`);
+      if (entry.kind !== undefined && entry.kind !== kind) {
+        throw SboxError.validation(
+          `Host mount kind mismatch (declared ${entry.kind}, found ${kind}).`,
+          { details: { path: `mounts.${i}.kind` } },
+        );
       }
-      out.push({
+      mounts.push({ ...entry, kind });
+      bindMounts.push({
         guestPath: entry.mount,
         hostPath,
         readonly: entry.readonly,
         ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
       });
     }
-    return Object.freeze(out);
+    return {
+      mounts: Object.freeze(mounts),
+      bindMounts: Object.freeze(bindMounts),
+    };
   }
 
   private validateCreateRequest(request: HostCreateRequest): void {
@@ -1197,7 +1206,7 @@ class LocalHost implements Host {
         },
       });
     }
-    assertHostDirectoryMounts(request.directories, request.volumes);
+    assertHostMounts(request.mounts, request.volumes);
     // Capability-gated: Microsandbox 0.6.6 accepts host 0 but does not expose the
     // allocated port for inspection, so LocalHost refuses dynamic publication.
     for (let i = 0; i < network.publish.length; i += 1) {
@@ -1454,7 +1463,7 @@ class LocalHost implements Host {
         labels: record.labels,
         dataRoot: this.volumeDataRoot,
       }),
-      directories: [...directoriesFromLabels(record.labels)],
+      mounts: [...mountsFromLabels(record.labels)],
       bindMounts: record.bindMounts,
     };
   }

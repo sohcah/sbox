@@ -18,12 +18,9 @@ import {
 import { canonicalNetworkFingerprint, canonicalSecretsFingerprint } from "./network/compile.js";
 import type { HostNetworkConfig, SafeRuntimeSecret } from "./network/types.js";
 import type { VolumeAttachmentSpec } from "./volume/types.js";
-import {
-  canonicalDirectoriesFingerprint,
-  type DirectoryAttachmentSpec,
-} from "./directory/types.js";
-import { directoriesLabelValue } from "./directory/labels.js";
-import { bindMountsMatchDirectories } from "./directory/decode-binds.js";
+import { canonicalMountsFingerprint, type MountAttachmentSpec } from "./directory/types.js";
+import { mountsLabelValue } from "./directory/labels.js";
+import { bindMountsMatchHostMounts } from "./directory/decode-binds.js";
 import type { NativeBindMount } from "./native-runtime.js";
 
 /**
@@ -44,7 +41,7 @@ export interface SandboxImmutableCreation {
   readonly network: HostNetworkConfig;
   readonly secrets: readonly SafeRuntimeSecret[];
   readonly volumes: readonly VolumeAttachmentSpec[];
-  readonly directories: readonly DirectoryAttachmentSpec[];
+  readonly mounts: readonly MountAttachmentSpec[];
 }
 
 /**
@@ -64,8 +61,8 @@ export function buildOwnershipLabels(
     [OWNERSHIP_LABEL_KEYS.profile]: identity.profile,
     [OWNERSHIP_LABEL_KEYS.creation]: creationFingerprint(creation),
   };
-  if (creation.directories.length > 0) {
-    labels[OWNERSHIP_LABEL_KEYS.directories] = directoriesLabelValue(creation.directories);
+  if (creation.mounts.length > 0) {
+    labels[OWNERSHIP_LABEL_KEYS.mounts] = mountsLabelValue(creation.mounts);
   }
   return Object.freeze(labels);
 }
@@ -114,8 +111,8 @@ export type NativeCreationEvidence = {
   readonly network: HostNetworkConfig;
   readonly secrets: readonly SafeRuntimeSecret[];
   readonly volumes: readonly VolumeAttachmentSpec[];
-  readonly directories: readonly DirectoryAttachmentSpec[];
-  /** Decoded native Bind mounts; compared to directories by guest path / mode. */
+  readonly mounts: readonly MountAttachmentSpec[];
+  /** Decoded native Bind mounts; compared to mounts by guest path / mode. */
   readonly bindMounts: readonly NativeBindMount[];
 };
 
@@ -158,7 +155,7 @@ export function nativeRecordMatchesCreation(
     readonly network: HostNetworkConfig;
     readonly secrets: readonly SafeRuntimeSecret[];
     readonly volumes: readonly VolumeAttachmentSpec[];
-    readonly directories: readonly DirectoryAttachmentSpec[];
+    readonly mounts: readonly MountAttachmentSpec[];
     readonly bindMounts: readonly NativeBindMount[];
   },
   requested: SandboxImmutableCreation,
@@ -209,12 +206,12 @@ export function nativeRecordMatchesCreation(
     return false;
   }
   if (
-    JSON.stringify(canonicalDirectoriesFingerprint(record.directories)) !==
-    JSON.stringify(canonicalDirectoriesFingerprint(requested.directories))
+    JSON.stringify(canonicalMountsFingerprint(record.mounts)) !==
+    JSON.stringify(canonicalMountsFingerprint(requested.mounts))
   ) {
     return false;
   }
-  if (!bindMountsMatchDirectories(record.bindMounts, requested.directories)) {
+  if (!bindMountsMatchHostMounts(record.bindMounts, requested.mounts)) {
     return false;
   }
   return envMatchesAllowingSdkInjected(requested.env, record.env);
@@ -259,7 +256,7 @@ function creationFingerprint(projection: SandboxImmutableCreation): string {
     network: canonicalNetworkFingerprint(projection.network),
     secrets: canonicalSecretsFingerprint(projection.secrets),
     volumes: canonicalVolumesFingerprint(projection.volumes),
-    directories: canonicalDirectoriesFingerprint(projection.directories),
+    mounts: canonicalMountsFingerprint(projection.mounts),
   });
   return createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 32);
 }

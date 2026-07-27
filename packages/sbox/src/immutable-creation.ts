@@ -5,6 +5,7 @@
  */
 
 import type { SandboxImmutableCreation } from "./ownership-adoption.js";
+import { SboxError } from "./errors.js";
 import { canonicalNetworkFingerprint, canonicalSecretsFingerprint } from "./network/compile.js";
 import {
   defaultNetworkConfig,
@@ -16,9 +17,9 @@ import {
 import type { HostVolumeAttachment, VolumeAttachmentSpec } from "./volume/types.js";
 import { canonicalVolumesFingerprint } from "./ownership-adoption.js";
 import {
-  canonicalDirectoriesFingerprint,
-  type DirectoryAttachmentSpec,
-  type HostDirectoryMount,
+  canonicalMountsFingerprint,
+  type HostMount,
+  type MountAttachmentSpec,
 } from "./directory/types.js";
 
 /** SDK defaults observed from microsandbox@0.6.6 minimal builder.build(). */
@@ -44,7 +45,7 @@ export function projectCreateRequest(request: {
   readonly network?: HostNetworkConfig;
   readonly secrets?: readonly ResolvedRuntimeSecret[];
   readonly volumes?: readonly HostVolumeAttachment[] | readonly VolumeAttachmentSpec[];
-  readonly directories?: readonly HostDirectoryMount[] | readonly DirectoryAttachmentSpec[];
+  readonly mounts?: readonly HostMount[] | readonly MountAttachmentSpec[];
 }): SandboxImmutableCreation {
   const secrets: readonly SafeRuntimeSecret[] = Object.freeze(
     (request.secrets ?? []).map((secret) =>
@@ -60,15 +61,23 @@ export function projectCreateRequest(request: {
       Object.freeze({ volume: attachment.volume, path: attachment.path }),
     ),
   );
-  const directories: readonly DirectoryAttachmentSpec[] = Object.freeze(
-    canonicalDirectoriesFingerprint(
-      (request.directories ?? []).map((entry) => ({
-        source: entry.source,
-        path: entry.path,
-        mount: entry.mount,
-        readonly: entry.readonly,
-        ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
-      })),
+  const mounts: readonly MountAttachmentSpec[] = Object.freeze(
+    canonicalMountsFingerprint(
+      (request.mounts ?? []).map((entry, index) => {
+        if (entry.kind !== "file" && entry.kind !== "directory") {
+          throw SboxError.validation("Host mount kind must be resolved before projection.", {
+            details: { path: `mounts.${index}.kind` },
+          });
+        }
+        return {
+          source: entry.source,
+          path: entry.path,
+          mount: entry.mount,
+          readonly: entry.readonly,
+          kind: entry.kind,
+          ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+        };
+      }),
     ),
   );
   return Object.freeze({
@@ -85,7 +94,7 @@ export function projectCreateRequest(request: {
     network: request.network ?? defaultNetworkConfig(),
     secrets,
     volumes,
-    directories,
+    mounts,
   });
 }
 
@@ -110,8 +119,8 @@ export function immutableCreationEquals(
       JSON.stringify(canonicalSecretsFingerprint(right.secrets)) &&
     JSON.stringify(canonicalVolumesFingerprint(left.volumes)) ===
       JSON.stringify(canonicalVolumesFingerprint(right.volumes)) &&
-    JSON.stringify(canonicalDirectoriesFingerprint(left.directories)) ===
-      JSON.stringify(canonicalDirectoriesFingerprint(right.directories))
+    JSON.stringify(canonicalMountsFingerprint(left.mounts)) ===
+      JSON.stringify(canonicalMountsFingerprint(right.mounts))
   );
 }
 
@@ -173,10 +182,10 @@ export function immutableCreationDriftFields(
     fields.push("volumes");
   }
   if (
-    JSON.stringify(canonicalDirectoriesFingerprint(expected.directories)) !==
-    JSON.stringify(canonicalDirectoriesFingerprint(actual.directories))
+    JSON.stringify(canonicalMountsFingerprint(expected.mounts)) !==
+    JSON.stringify(canonicalMountsFingerprint(actual.mounts))
   ) {
-    fields.push("directories");
+    fields.push("mounts");
   }
   return fields;
 }

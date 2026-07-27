@@ -33,9 +33,11 @@ import { hostDockerPlatform } from "../image/platform.js";
 import { normalizePosixRelative } from "../image/context.js";
 import { throwAccumulatedValidation } from "../config/validate.js";
 import { parseBinarySizeToBytes, parseBinarySizeToMiB } from "../config/scalars.js";
-import { normalizeDirectoryMountConfig } from "../directory/normalize.js";
+import { normalizeHostMountConfig } from "../directory/normalize.js";
 import { expandHomePrefix, isHomeRelativePath } from "../directory/home-path.js";
-import type { HostDirectoryMount } from "../directory/types.js";
+import { assertBindablePath } from "../directory/assert-directory.js";
+import type { HostMount, MountAttachmentSpec, MountKind } from "../directory/types.js";
+import { canonicalMountsFingerprint } from "../directory/types.js";
 import {
   mergeNetworkConfigs,
   normalizeAllowRule,
@@ -132,7 +134,7 @@ export async function resolveCreateIntent(
 
   const image = resolveProfileImage(selected.profile, selected.name, input.resolvedImage);
   const volumes = resolveProfileVolumes(input.project, selected.profile, selected.name);
-  const directories = resolveProfileDirectories(
+  const mounts = await resolveProfileMounts(
     selected.profile,
     selected.name,
     input.external.configDirectory,
@@ -145,9 +147,18 @@ export async function resolveCreateIntent(
     network,
     secretsResult.values,
     volumes,
-    directories,
+    mounts,
   );
-  const projected = projectCreateRequest(request);
+  // Projection requires kind. Host create resolves any remaining kinds; for Client
+  // drift we only fingerprint mounts whose kind is already known.
+  const mountsWithKind = mounts.filter(
+    (entry): entry is HostMount & { readonly kind: MountKind } =>
+      entry.kind === "file" || entry.kind === "directory",
+  );
+  const projected = projectCreateRequest({
+    ...request,
+    mounts: mountsWithKind,
+  });
   return { identity, request, projected };
 }
 
@@ -197,21 +208,21 @@ function resolveProfileVolumes(
   return Object.freeze(out);
 }
 
-function resolveProfileDirectories(
+async function resolveProfileMounts(
   profile: ProfileConfig,
   profileName: string,
   configDirectory: string,
-): readonly HostDirectoryMount[] {
-  const attachments = profile.directories ?? [];
+): Promise<readonly HostMount[]> {
+  const attachments = profile.mounts ?? [];
   if (attachments.length === 0) {
     return [];
   }
-  const out: HostDirectoryMount[] = [];
+  const out: HostMount[] = [];
   const issues: ConfigurationIssue[] = [];
   const seenMounts = new Set<string>((profile.volumes ?? []).map((v) => v.path));
   for (let i = 0; i < attachments.length; i += 1) {
-    const pathPrefix = `profiles.${profileName}.directories.${i}`;
-    const normalized = normalizeDirectoryMountConfig(attachments[i]!, pathPrefix);
+    const pathPrefix = `profiles.${profileName}.mounts.${i}`;
+    const normalized = normalizeHostMountConfig(attachments[i]!, pathPrefix);
     if (!normalized.ok) {
       issues.push(...normalized.issues);
       continue;
@@ -220,15 +231,13 @@ function resolveProfileDirectories(
     if (seenMounts.has(entry.mount)) {
       issues.push({
         path: `${pathPrefix}.mount`,
-        message: `Guest path "${entry.mount}" is already used by a volume or directory mount.`,
+        message: `Guest path "${entry.mount}" is already used by a volume or Host mount.`,
       });
       continue;
     }
     seenMounts.add(entry.mount);
     const resolvedPath =
-      entry.source === "client"
-        ? resolveClientDirectoryPath(configDirectory, entry.path)
-        : entry.path;
+      entry.source === "client" ? resolveClientMountPath(configDirectory, entry.path) : entry.path;
     let quotaMiB = entry.quotaMiB;
     if (!entry.readonly && entry.quota !== undefined && quotaMiB === undefined) {
       try {
@@ -241,22 +250,49 @@ function resolveProfileDirectories(
         continue;
       }
     }
+    let kind: MountKind | undefined;
+    if (entry.source === "client") {
+      try {
+        kind = await assertBindablePath(resolvedPath, `${pathPrefix}.path`);
+      } catch (error) {
+        if (
+          error instanceof SboxError &&
+          (error.code === "validation" || error.code === "not_found")
+        ) {
+          issues.push({
+            path: `${pathPrefix}.path`,
+            message: error.message,
+          });
+          continue;
+        }
+        throw error;
+      }
+    } else {
+      // LocalHost: resolve kind early when the Host path is visible here.
+      // Remote Host: path may not exist on the Client; kind is inferred at create.
+      try {
+        kind = await assertBindablePath(expandHomePrefix(resolvedPath), `${pathPrefix}.path`);
+      } catch {
+        kind = undefined;
+      }
+    }
     out.push({
       source: entry.source,
       path: resolvedPath,
       mount: entry.mount,
       readonly: entry.readonly,
+      ...(kind !== undefined ? { kind } : {}),
       ...(quotaMiB !== undefined ? { quotaMiB } : {}),
     });
   }
   if (issues.length > 0) {
-    throwAccumulatedValidation(issues, "Sandbox directory mount validation failed.");
+    throwAccumulatedValidation(issues, "Sandbox Host mount validation failed.");
   }
   return Object.freeze(out);
 }
 
 /** Client paths: `~/…` → home; otherwise relative to project config directory. */
-function resolveClientDirectoryPath(configDirectory: string, path: string): string {
+function resolveClientMountPath(configDirectory: string, path: string): string {
   if (isHomeRelativePath(path)) {
     return expandHomePrefix(path);
   }
@@ -350,7 +386,7 @@ export function profileToCreateRequest(
   network: HostNetworkConfig,
   secrets: readonly ResolvedRuntimeSecret[],
   volumes: readonly HostVolumeAttachment[],
-  directories: readonly HostDirectoryMount[] = [],
+  mounts: readonly HostMount[] = [],
 ): HostCreateRequest {
   return {
     identity,
@@ -367,7 +403,7 @@ export function profileToCreateRequest(
     network,
     ...(secrets.length > 0 ? { secrets } : {}),
     ...(volumes.length > 0 ? { volumes } : {}),
-    ...(directories.length > 0 ? { directories } : {}),
+    ...(mounts.length > 0 ? { mounts } : {}),
   };
 }
 
@@ -507,11 +543,15 @@ async function resolveBuildSecrets(
 /**
  * Compare an existing inspection against desired immutable creation settings
  * that are safely visible on inspection (not environment values).
+ *
+ * `requestMounts` supplies the full create-time mount list (kinds may be unset for
+ * remote Host paths). Inspection kinds are reused for matching attachments.
  */
 export function reportCreationDrift(
   identity: SandboxIdentity,
   expected: SandboxImmutableCreation,
   inspection: SandboxInspection,
+  requestMounts?: readonly HostMount[],
 ): void {
   const actual = projectCreateRequest({
     image: inspection.creation.image,
@@ -541,12 +581,17 @@ export function reportCreationDrift(
       value: "",
     })),
     volumes: inspection.creation.volumes,
-    directories: inspection.creation.directories,
+    mounts: inspection.creation.mounts,
   });
 
+  const expectedMounts = reconcileMountKindsForDrift(
+    requestMounts ?? expected.mounts,
+    actual.mounts,
+  );
   const expectedVisible: SandboxImmutableCreation = Object.freeze({
     ...expected,
     env: Object.freeze({}),
+    mounts: expectedMounts,
   });
   const fields = immutableCreationDriftFields(expectedVisible, actual).filter((field) => {
     if (field === "environment") {
@@ -568,7 +613,7 @@ export function reportCreationDrift(
     return true;
   });
 
-  const expectedFingerprint = buildOwnershipLabels(identity, expected)[
+  const expectedFingerprint = buildOwnershipLabels(identity, expectedVisible)[
     OWNERSHIP_LABEL_KEYS.creation
   ];
   const actualFingerprint = inspection.labels[OWNERSHIP_LABEL_KEYS.creation];
@@ -602,5 +647,56 @@ export function reportCreationDrift(
         drift: fields,
       },
     },
+  );
+}
+
+/**
+ * Fill missing kinds on desired mounts from inspection when source/path/mount match.
+ */
+function reconcileMountKindsForDrift(
+  desired: readonly {
+    readonly source: HostMount["source"];
+    readonly path: string;
+    readonly mount: string;
+    readonly readonly: boolean;
+    readonly kind?: MountKind;
+    readonly quotaMiB?: number;
+  }[],
+  inspected: readonly MountAttachmentSpec[],
+): readonly MountAttachmentSpec[] {
+  return Object.freeze(
+    canonicalMountsFingerprint(
+      desired.map((entry) => {
+        if (entry.kind === "file" || entry.kind === "directory") {
+          return {
+            source: entry.source,
+            path: entry.path,
+            mount: entry.mount,
+            readonly: entry.readonly,
+            kind: entry.kind,
+            ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+          };
+        }
+        const match = inspected.find(
+          (candidate) =>
+            candidate.source === entry.source &&
+            candidate.path === entry.path &&
+            candidate.mount === entry.mount,
+        );
+        if (match === undefined) {
+          throw SboxError.validation("Host mount kind must be resolved before drift comparison.", {
+            details: { path: entry.mount },
+          });
+        }
+        return {
+          source: entry.source,
+          path: entry.path,
+          mount: entry.mount,
+          readonly: entry.readonly,
+          kind: match.kind,
+          ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+        };
+      }),
+    ),
   );
 }

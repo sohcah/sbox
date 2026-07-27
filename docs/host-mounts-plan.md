@@ -14,8 +14,8 @@ plan: unified **Host mounts** (`mounts:`), file or directory inferred at create.
 - `source: client` → always read-only; relative paths resolve against project
   config directory; `~/…` → client home.
 - `source: host` → absolute or `~/…` on the Host; RO or RW; `quota` optional
-  (omit → plain MSB `.bind()`, accept protective default; spike decides how
-  omitted quota matches fingerprint / decoded native `quotaMib`).
+  (omit → plain MSB `.bind()`, accept protective default; omitted quota is not
+  persisted — fingerprint omits `quotaMiB`).
 - Create-time only; immutable creation; no overlays; no content hashing; no
   copy-back; no live refresh.
 - Symlink roots rejected; guest `mount` unique across `mounts` ∪ `volumes`
@@ -56,6 +56,10 @@ On microsandbox@0.6.6 prove:
 - RW file / directory with plain `.bind()` (no quota) and whether SandboxConfig
   persists a default `quotaMib`
 
+**Spike result:** file binds work; omitted quota is **not** persisted on the native
+config (`quotaMib` absent). Fingerprint rule: omit `quotaMiB` when the profile
+omits `quota` (do not invent MSB's protective default into the fingerprint).
+
 Exit: file binds work; omitted-quota fingerprint rule chosen (effective quota
 after create, or match-omitted-to-default). Stop/replan if file binds fail.
 
@@ -83,7 +87,8 @@ protocol mismatch fails; docs match.
 ## Risks
 
 - MSB bind API is documented for host *directories*; Phase 0 is mandatory.
-- Omitted quota vs persisted MSB default can break ownership match — resolve in spike.
+- Omitted quota is not persisted by MSB; fingerprint omits `quotaMiB` when unset
+  (do not bake the protective default into ownership).
 - Hard cuts (`directories:`, label key, protocol 3) require recreate of existing
   sandboxes that used directory mounts.
 

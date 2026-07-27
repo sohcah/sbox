@@ -1,5 +1,5 @@
 /**
- * Unit tests for Host directory mount config, LocalHost binds, remote stages,
+ * Unit tests for Host mount config, LocalHost binds, remote stages,
  * Host-boundary validation, and Bind mount decode.
  */
 
@@ -25,13 +25,13 @@ import {
 import { resolveCreateIntent } from "../src/client/resolve-intent.js";
 import { MemoryNativeRuntime } from "./helpers/memory-native-runtime.js";
 import { OWNERSHIP_LABEL_KEYS } from "../src/ownership.js";
-import { directoriesFromLabels } from "../src/directory/labels.js";
+import { mountsFromLabels } from "../src/directory/labels.js";
 import { isSboxError } from "../src/errors.js";
 import { decodeBindMounts } from "../src/directory/decode-binds.js";
-import { assertHostDirectoryMounts } from "../src/directory/validate.js";
+import { assertHostMounts } from "../src/directory/validate.js";
 import { expandHomePrefix } from "../src/directory/home-path.js";
 import { directoryStageRootForIdentity } from "../src/directory/paths.js";
-import { packClientDirectoryArchive } from "../src/directory/stages.js";
+import { packClientMountArchive } from "../src/directory/stages.js";
 import { FakeHost } from "../src/fake-host.js";
 import { createRemoteHost } from "../src/remote/remote-host.js";
 import { createSboxServer } from "../src/remote/server.js";
@@ -45,16 +45,17 @@ afterEach(async () => {
   }
 });
 
-describe("directory mount config", () => {
-  it("parses defaults and rejects client writable / missing quota", () => {
+describe("Host mount config", () => {
+  it("parses defaults, allows RW host without quota, rejects client writable", () => {
     const ok = parseYamlProjectInput({
       version: 1,
       project: "demo",
       profiles: {
         default: {
           image: "alpine:3.20",
-          directories: [
+          mounts: [
             { path: "./vendor", mount: "/vendor" },
+            { path: "./config.json", mount: "/etc/app/config.json" },
             {
               path: "/var/cache/tools",
               source: "host",
@@ -62,19 +63,32 @@ describe("directory mount config", () => {
               readonly: false,
               quota: "512MiB",
             },
+            {
+              path: "/var/log/app.log",
+              source: "host",
+              mount: "/var/log/app.log",
+              readonly: false,
+            },
           ],
         },
       },
     });
     const safe = toSafeProjectConfig(ok);
-    expect(safe.profiles["default"]?.directories).toEqual([
+    expect(safe.profiles["default"]?.mounts).toEqual([
       { path: "./vendor", mount: "/vendor", source: "client", readonly: true },
+      { path: "./config.json", mount: "/etc/app/config.json", source: "client", readonly: true },
       {
         path: "/var/cache/tools",
         mount: "/tools",
         source: "host",
         readonly: false,
         quota: "512MiB",
+      },
+      {
+        path: "/var/log/app.log",
+        mount: "/var/log/app.log",
+        source: "host",
+        readonly: false,
       },
     ]);
 
@@ -84,7 +98,7 @@ describe("directory mount config", () => {
       profiles: {
         default: {
           image: "alpine:3.20",
-          directories: [{ path: "./x", mount: "/x", readonly: false }],
+          mounts: [{ path: "./x", mount: "/x", readonly: false }],
         },
       },
     });
@@ -92,20 +106,28 @@ describe("directory mount config", () => {
     if (!clientWritable.ok) {
       expect(clientWritable.issues.some((issue) => /read-only/i.test(issue.message))).toBe(true);
     }
+  });
 
-    const missingQuota = tryParseYamlProjectInput({
+  it("rejects legacy directories: YAML key", () => {
+    const result = tryParseYamlProjectInput({
       version: 1,
       project: "demo",
       profiles: {
         default: {
           image: "alpine:3.20",
-          directories: [{ path: "/abs", source: "host", mount: "/x", readonly: false }],
+          directories: [{ path: "./x", mount: "/x" }],
         },
       },
     });
-    expect(missingQuota.ok).toBe(false);
-    if (!missingQuota.ok) {
-      expect(missingQuota.issues.some((issue) => /quota/i.test(issue.message))).toBe(true);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(
+        result.issues.some(
+          (issue) =>
+            /unrecognized|unrecognized_keys|directories/i.test(issue.message) ||
+            issue.path.includes("directories"),
+        ),
+      ).toBe(true);
     }
   });
 
@@ -118,7 +140,7 @@ describe("directory mount config", () => {
         default: {
           image: "alpine:3.20",
           volumes: [{ volume: "cache", path: "/data" }],
-          directories: [{ path: "./x", mount: "/data" }],
+          mounts: [{ path: "./x", mount: "/data" }],
         },
       },
     });
@@ -129,45 +151,43 @@ describe("directory mount config", () => {
   });
 });
 
-describe("HostCreateRequest directory invariants", () => {
+describe("HostCreateRequest mount invariants", () => {
   it("rejects client writable, relative host paths, quota on RO, and collisions", () => {
     expect(() =>
-      assertHostDirectoryMounts([
-        { source: "client", path: "/tmp/x", mount: "/x", readonly: false },
-      ]),
+      assertHostMounts([{ source: "client", path: "/tmp/x", mount: "/x", readonly: false }]),
     ).toThrow(/read-only/i);
 
     expect(() =>
-      assertHostDirectoryMounts([
-        { source: "host", path: "relative", mount: "/x", readonly: true },
-      ]),
+      assertHostMounts([{ source: "host", path: "relative", mount: "/x", readonly: true }]),
     ).toThrow(/absolute|home-relative/i);
 
     expect(() =>
-      assertHostDirectoryMounts([{ source: "host", path: "~/cache", mount: "/x", readonly: true }]),
+      assertHostMounts([{ source: "host", path: "~/cache", mount: "/x", readonly: true }]),
     ).not.toThrow();
 
     expect(() =>
-      assertHostDirectoryMounts([
+      assertHostMounts([
         { source: "host", path: "/tmp/x", mount: "/x", readonly: true, quotaMiB: 64 },
       ]),
     ).toThrow(/quota/i);
 
     expect(() =>
-      assertHostDirectoryMounts(
+      assertHostMounts([{ source: "host", path: "/tmp/x", mount: "/x", readonly: false }]),
+    ).not.toThrow();
+
+    expect(() =>
+      assertHostMounts(
         [{ source: "client", path: "/tmp/x", mount: "/data", readonly: true }],
         [{ path: "/data" }],
       ),
     ).toThrow(/already used/i);
 
     expect(() =>
-      assertHostDirectoryMounts([
-        { source: "client", path: "/tmp/x", mount: "relative", readonly: true },
-      ]),
+      assertHostMounts([{ source: "client", path: "/tmp/x", mount: "relative", readonly: true }]),
     ).toThrow(/absolute/i);
   });
 
-  it("LocalHost rejects invalid HostCreateRequest directories", async () => {
+  it("LocalHost rejects invalid HostCreateRequest mounts", async () => {
     const host = createLocalHostInternal({ runtime: new MemoryNativeRuntime() });
     const identity = assertSandboxIdentity({
       project: "demo",
@@ -178,7 +198,7 @@ describe("HostCreateRequest directory invariants", () => {
       host.create({
         identity,
         image: "alpine:3.20",
-        directories: [{ source: "client", path: "/tmp/x", mount: "/x", readonly: false }],
+        mounts: [{ source: "client", path: "/tmp/x", mount: "/x", readonly: false }],
       }),
     ).rejects.toMatchObject({ code: "validation", message: expect.stringMatching(/read-only/i) });
     await host[Symbol.asyncDispose]();
@@ -215,15 +235,19 @@ describe("decodeBindMounts", () => {
   });
 });
 
-describe("directory mounts on LocalHost", () => {
-  it("binds resolved client and host directories and labels them for inspection", async () => {
+describe("Host mounts on LocalHost", () => {
+  it("binds resolved client/host files and directories and labels them for inspection", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-dir-"));
     dirs.push(root);
     const vendor = join(root, "vendor");
+    const configFile = join(root, "config.json");
     const hostTools = join(root, "tools");
+    const hostLog = join(root, "app.log");
     await mkdir(vendor);
     await mkdir(hostTools);
     await writeFile(join(vendor, "a.txt"), "a", "utf8");
+    await writeFile(configFile, '{"ok":true}', "utf8");
+    await writeFile(hostLog, "log", "utf8");
 
     const runtime = new MemoryNativeRuntime();
     let seenBinds: unknown;
@@ -240,14 +264,21 @@ describe("directory mounts on LocalHost", () => {
       profiles: {
         default: {
           image: "alpine:3.20",
-          directories: [
+          mounts: [
             { path: "./vendor", mount: "/vendor" },
+            { path: "./config.json", mount: "/etc/app/config.json" },
             {
               path: hostTools,
               source: "host",
               mount: "/tools",
               readonly: false,
               quota: "64MiB",
+            },
+            {
+              path: hostLog,
+              source: "host",
+              mount: "/var/log/app.log",
+              readonly: false,
             },
           ],
         },
@@ -260,51 +291,148 @@ describe("directory mounts on LocalHost", () => {
     const inspection = await host.create(intent.request);
     expect(seenBinds).toEqual([
       { guestPath: "/vendor", hostPath: vendor, readonly: true },
+      { guestPath: "/etc/app/config.json", hostPath: configFile, readonly: true },
       { guestPath: "/tools", hostPath: hostTools, readonly: false, quotaMiB: 64 },
+      { guestPath: "/var/log/app.log", hostPath: hostLog, readonly: false },
     ]);
     // Fingerprint / inspection order is by guest mount path.
-    expect(inspection.creation.directories).toEqual([
-      { source: "host", path: hostTools, mount: "/tools", readonly: false, quotaMiB: 64 },
-      { source: "client", path: vendor, mount: "/vendor", readonly: true },
+    expect(inspection.creation.mounts).toEqual([
+      {
+        source: "client",
+        path: configFile,
+        mount: "/etc/app/config.json",
+        readonly: true,
+        kind: "file",
+      },
+      {
+        source: "host",
+        path: hostTools,
+        mount: "/tools",
+        readonly: false,
+        kind: "directory",
+        quotaMiB: 64,
+      },
+      {
+        source: "host",
+        path: hostLog,
+        mount: "/var/log/app.log",
+        readonly: false,
+        kind: "file",
+      },
+      { source: "client", path: vendor, mount: "/vendor", readonly: true, kind: "directory" },
     ]);
-    expect(directoriesFromLabels(inspection.labels)).toEqual(inspection.creation.directories);
-    expect(inspection.labels[OWNERSHIP_LABEL_KEYS.directories]).toBeDefined();
+    expect(mountsFromLabels(inspection.labels)).toEqual(inspection.creation.mounts);
+    expect(inspection.labels[OWNERSHIP_LABEL_KEYS.mounts]).toBeDefined();
     const stored = await runtime.get(inspection.nativeName);
     expect(stored.bindMounts).toEqual(seenBinds);
     await host[Symbol.asyncDispose]();
   });
 
-  it("rejects symlink directory roots", async () => {
+  it("rejects symlink directory and file roots", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-dir-sym-"));
     dirs.push(root);
     const real = join(root, "real");
     const link = join(root, "link");
+    const realFile = join(root, "real.txt");
+    const linkFile = join(root, "link.txt");
     await mkdir(real);
     await symlink(real, link);
+    await writeFile(realFile, "x", "utf8");
+    await symlink(realFile, linkFile);
 
     const host = createLocalHostInternal({ runtime: new MemoryNativeRuntime() });
-    const project = parseYamlProjectInput({
+    const projectDir = parseYamlProjectInput({
       version: 1,
       project: "demo",
       profiles: {
         default: {
           image: "alpine:3.20",
-          directories: [{ path: "./link", mount: "/x" }],
+          mounts: [{ path: "./link", mount: "/x" }],
         },
       },
     });
-    const intent = await resolveCreateIntent({
-      project,
-      external: { configDirectory: root, env: {} },
+    await expect(
+      resolveCreateIntent({
+        project: projectDir,
+        external: { configDirectory: root, env: {} },
+      }),
+    ).rejects.toSatisfy((error: unknown) => {
+      if (!isSboxError(error) || error.code !== "validation") {
+        return false;
+      }
+      const issues = error.details?.["issues"];
+      if (!Array.isArray(issues)) {
+        return /symlink/i.test(error.message);
+      }
+      return issues.some(
+        (issue) =>
+          issue !== null &&
+          typeof issue === "object" &&
+          "message" in issue &&
+          typeof issue.message === "string" &&
+          /symlink/i.test(issue.message),
+      );
     });
-    await expect(host.create(intent.request)).rejects.toMatchObject({
+
+    // Host create also rejects symlink roots when given a raw request.
+    await expect(
+      host.create({
+        identity: assertSandboxIdentity({
+          project: "demo",
+          profile: "default",
+          instance: "sym-file",
+        }),
+        image: "alpine:3.20",
+        mounts: [{ source: "client", path: linkFile, mount: "/x.txt", readonly: true }],
+      }),
+    ).rejects.toMatchObject({
       code: "validation",
       message: expect.stringMatching(/symlink/i),
     });
     await host[Symbol.asyncDispose]();
   });
 
-  it("expands ~/ client and host directory paths", async () => {
+  it("treats kind flip as creation drift", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sbox-kind-flip-"));
+    dirs.push(root);
+    const path = join(root, "shared");
+    await mkdir(path);
+
+    const runtime = new MemoryNativeRuntime();
+    const host = createLocalHostInternal({ runtime });
+    const identity = assertSandboxIdentity({
+      project: "demo",
+      profile: "default",
+      instance: "kind-flip",
+    });
+
+    await host.create({
+      identity,
+      image: "alpine:3.20",
+      mounts: [{ source: "client", path, mount: "/shared", readonly: true, kind: "directory" }],
+    });
+
+    await rm(path, { recursive: true, force: true });
+    await writeFile(path, "now-a-file", "utf8");
+
+    await expect(
+      host.create({
+        identity,
+        image: "alpine:3.20",
+        mounts: [{ source: "client", path, mount: "/shared", readonly: true, kind: "file" }],
+      }),
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        isSboxError(error) &&
+        (error.code === "already_exists" ||
+          error.code === "ownership_conflict" ||
+          /ownership|configuration|creation|immutable|conflict/i.test(error.message)),
+    );
+    await host.remove(identity);
+    await host[Symbol.asyncDispose]();
+  });
+
+  it("expands ~/ client and host mount paths", async () => {
     expect(expandHomePrefix("~/cache", "/home/me")).toBe(join("/home/me", "cache"));
     expect(expandHomePrefix("~", "/home/me")).toBe("/home/me");
     expect(expandHomePrefix("~user/x", "/home/me")).toBe("~user/x");
@@ -325,7 +453,7 @@ describe("directory mounts on LocalHost", () => {
       profiles: {
         default: {
           image: "alpine:3.20",
-          directories: [
+          mounts: [
             { path: homeRelativeVendor, mount: "/vendor" },
             {
               path: homeRelativeTools,
@@ -342,13 +470,14 @@ describe("directory mounts on LocalHost", () => {
       project: ok,
       external: { configDirectory: underHome, env: {} },
     });
-    expect(intent.request.directories).toEqual([
-      { source: "client", path: vendor, mount: "/vendor", readonly: true },
+    expect(intent.request.mounts).toEqual([
+      { source: "client", path: vendor, mount: "/vendor", readonly: true, kind: "directory" },
       {
         source: "host",
         path: homeRelativeTools,
         mount: "/tools",
         readonly: false,
+        kind: "directory",
         quotaMiB: 64,
       },
     ]);
@@ -370,15 +499,17 @@ describe("directory mounts on LocalHost", () => {
   });
 });
 
-describe("directory mounts over RemoteHost", () => {
-  const TOKEN = "test-token-directories-0123456789ab";
+describe("Host mounts over RemoteHost", () => {
+  const TOKEN = "test-token-mounts-0123456789ab";
 
-  it("stages client directories then cleans them on remove", async () => {
+  it("stages client mounts then cleans them on remove", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-dir-remote-"));
     dirs.push(root);
     const vendor = join(root, "vendor");
+    const configFile = join(root, "config.json");
     await mkdir(vendor);
     await writeFile(join(vendor, "a.txt"), "a", "utf8");
+    await writeFile(configFile, '{"ok":true}', "utf8");
 
     const fake = new FakeHost();
     await using server = await createSboxServer({
@@ -396,10 +527,20 @@ describe("directory mounts over RemoteHost", () => {
     const inspection = await remote.create({
       identity,
       image: "alpine:3.20",
-      directories: [{ source: "client", path: vendor, mount: "/vendor", readonly: true }],
+      mounts: [
+        { source: "client", path: vendor, mount: "/vendor", readonly: true },
+        { source: "client", path: configFile, mount: "/etc/app/config.json", readonly: true },
+      ],
     });
-    expect(inspection.creation.directories).toEqual([
-      { source: "client", path: vendor, mount: "/vendor", readonly: true },
+    expect(inspection.creation.mounts).toEqual([
+      {
+        source: "client",
+        path: configFile,
+        mount: "/etc/app/config.json",
+        readonly: true,
+        kind: "file",
+      },
+      { source: "client", path: vendor, mount: "/vendor", readonly: true, kind: "directory" },
     ]);
 
     const stageRoot = directoryStageRootForIdentity(identity);
@@ -434,7 +575,7 @@ describe("directory mounts over RemoteHost", () => {
     await remote.create({
       identity,
       image: "alpine:3.20",
-      directories: [{ source: "client", path: vendor, mount: "/vendor", readonly: true }],
+      mounts: [{ source: "client", path: vendor, mount: "/vendor", readonly: true }],
     });
     const stageRoot = directoryStageRootForIdentity(identity);
     const before = await readdir(stageRoot);
@@ -447,7 +588,7 @@ describe("directory mounts over RemoteHost", () => {
       remote.create({
         identity,
         image: "alpine:3.20",
-        directories: [{ source: "client", path: vendor, mount: "/vendor", readonly: true }],
+        mounts: [{ source: "client", path: vendor, mount: "/vendor", readonly: true }],
       }),
     ).rejects.toSatisfy((error: unknown) => isSboxError(error) && error.code === "already_exists");
 
@@ -467,7 +608,7 @@ describe("directory mounts over RemoteHost", () => {
     await symlink(real, link);
 
     await expect(
-      packClientDirectoryArchive([{ source: "client", path: link, mount: "/x", readonly: true }]),
+      packClientMountArchive([{ source: "client", path: link, mount: "/x", readonly: true }]),
     ).rejects.toMatchObject({
       code: "validation",
       message: expect.stringMatching(/symlink/i),
@@ -491,7 +632,7 @@ describe("directory mounts over RemoteHost", () => {
       remote.create({
         identity,
         image: "alpine:3.20",
-        directories: [
+        mounts: [
           {
             source: "client",
             path: "/tmp/x",

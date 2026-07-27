@@ -1,20 +1,20 @@
 /**
- * Validate and normalize profile directory mount attachments.
+ * Validate and normalize profile Host mount attachments.
  */
 
 import { isAbsoluteGuestPath, isBinarySize, parseBinarySizeToMiB } from "../config/scalars.js";
-import type { ConfigurationIssue, DirectoryMountConfig } from "../config/types.js";
+import type { ConfigurationIssue, HostMountConfig } from "../config/types.js";
 import { isAbsoluteOrHomeRelativeHostPath } from "./home-path.js";
-import type { DirectoryMountSource } from "./types.js";
+import type { MountSource } from "./types.js";
 
-export function normalizeDirectoryMountConfig(
-  raw: DirectoryMountConfig,
+export function normalizeHostMountConfig(
+  raw: HostMountConfig,
   pathPrefix: string,
 ):
-  | { readonly ok: true; readonly value: RequiredDirectoryMount }
+  | { readonly ok: true; readonly value: RequiredHostMount }
   | { readonly ok: false; readonly issues: ConfigurationIssue[] } {
   const issues: ConfigurationIssue[] = [];
-  const source: DirectoryMountSource = raw.source ?? "client";
+  const source: MountSource = raw.source ?? "client";
   const readonly = raw.readonly ?? true;
 
   if (source !== "client" && source !== "host") {
@@ -40,19 +40,13 @@ export function normalizeDirectoryMountConfig(
   if (source === "client" && !readonly) {
     issues.push({
       path: `${pathPrefix}.readonly`,
-      message: "Client-sourced directory mounts must be read-only.",
+      message: "Client-sourced Host mounts must be read-only.",
     });
   }
   if (readonly && raw.quota !== undefined) {
     issues.push({
       path: `${pathPrefix}.quota`,
-      message: "Quota is only allowed for writable Host directory mounts.",
-    });
-  }
-  if (!readonly && raw.quota === undefined) {
-    issues.push({
-      path: `${pathPrefix}.quota`,
-      message: "Writable Host directory mounts require an explicit quota.",
+      message: "Quota is only allowed for writable Host mounts.",
     });
   }
   let quotaMiB: number | undefined;
@@ -91,11 +85,16 @@ export function normalizeDirectoryMountConfig(
   };
 }
 
-export type RequiredDirectoryMount = {
+export type RequiredHostMount = {
   readonly path: string;
   readonly mount: string;
-  readonly source: DirectoryMountSource;
+  readonly source: MountSource;
   readonly readonly: boolean;
   readonly quotaMiB?: number;
   readonly quota?: string;
 };
+
+/** @deprecated Use normalizeHostMountConfig */
+export const normalizeDirectoryMountConfig = normalizeHostMountConfig;
+/** @deprecated Use RequiredHostMount */
+export type RequiredDirectoryMount = RequiredHostMount;

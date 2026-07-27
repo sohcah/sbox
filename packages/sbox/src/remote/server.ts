@@ -34,13 +34,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { materializeArchive, packHostPath, removeMaterialized } from "./materialize.js";
 import {
-  materializeClientDirectoryStages,
+  materializeClientMountStages,
   removeDirectoryStageGeneration,
   removeDirectoryStages,
 } from "../directory/stages.js";
-import { assertBindableDirectory } from "../directory/assert-directory.js";
-import { assertHostDirectoryMounts } from "../directory/validate.js";
+import { assertBindablePath } from "../directory/assert-directory.js";
+import { assertHostMounts } from "../directory/validate.js";
 import { expandHomePrefix } from "../directory/home-path.js";
+import type { HostMount } from "../directory/types.js";
 import {
   SBOX_PROTOCOL_VERSION,
   httpStatusForError,
@@ -223,30 +224,43 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
       const archive = decodeTransferArchive(archiveBuf);
       const identity = assertSandboxIdentity(body.identity);
       // bindHostPath is server-only staging metadata; never accepted from the wire.
-      const directoriesIn = (body.directories ?? []).map((entry) => ({
-        source: entry.source,
-        path: entry.path,
-        mount: entry.mount,
-        readonly: entry.readonly,
-        ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
-      }));
-      assertHostDirectoryMounts(directoriesIn, body.volumes);
-      for (let i = 0; i < directoriesIn.length; i += 1) {
-        const entry = directoriesIn[i]!;
+      const mountsIn: HostMount[] = [];
+      for (let i = 0; i < (body.mounts ?? []).length; i += 1) {
+        const entry = body.mounts![i]!;
+        let kind = entry.kind;
         if (entry.source === "host") {
-          await assertBindableDirectory(expandHomePrefix(entry.path), `directories.${i}.path`);
+          const resolved = await assertBindablePath(
+            expandHomePrefix(entry.path),
+            `mounts.${i}.path`,
+          );
+          if (kind !== undefined && kind !== resolved) {
+            throw SboxError.validation(
+              `Host mount kind mismatch (declared ${kind}, found ${resolved}).`,
+              { details: { path: `mounts.${i}.kind` } },
+            );
+          }
+          kind = resolved;
         }
+        mountsIn.push({
+          source: entry.source,
+          path: entry.path,
+          mount: entry.mount,
+          readonly: entry.readonly,
+          ...(kind !== undefined ? { kind } : {}),
+          ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+        });
       }
-      let staged = directoriesIn;
+      assertHostMounts(mountsIn, body.volumes);
+      let staged: readonly HostMount[] = mountsIn;
       let generationRoot: string | undefined;
-      if (directoriesIn.some((entry) => entry.source === "client")) {
-        const materialized = await materializeClientDirectoryStages({
+      if (mountsIn.some((entry) => entry.source === "client")) {
+        const materialized = await materializeClientMountStages({
           identity,
-          directories: directoriesIn,
+          mounts: mountsIn,
           archive,
           signal,
         });
-        staged = [...materialized.directories];
+        staged = materialized.mounts;
         generationRoot = materialized.generationRoot;
       }
       const request = {
@@ -264,7 +278,7 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
         ...(body.network !== undefined ? { network: body.network } : {}),
         ...(body.secrets !== undefined ? { secrets: body.secrets } : {}),
         ...(body.volumes !== undefined ? { volumes: body.volumes } : {}),
-        ...(staged.length > 0 ? { directories: staged } : {}),
+        ...(staged.length > 0 ? { mounts: staged } : {}),
       } as import("../types.js").HostCreateRequest;
       let inspection;
       try {

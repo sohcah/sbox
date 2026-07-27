@@ -1,4 +1,4 @@
-# Feature inventory (0.2.0)
+# Feature inventory (0.2.1)
 
 Every public behavior maps to **delegation** (Microsandbox / Docker / qemu-img),
 a **bounded helper** in `sbox`, or a **deliberate exclusion** (`docs/non-goals.md`).

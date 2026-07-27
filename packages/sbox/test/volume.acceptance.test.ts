@@ -69,11 +69,7 @@ describe("volume acceptance", () => {
     } catch (error) {
       const status = classifyAcceptanceFailure(error);
       const reason =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : String(error);
+        error instanceof Error ? error.message : typeof error === "string" ? error : String(error);
       console.log(formatAcceptanceStatusLine(status, reason));
       if (status === "unavailable") {
         skip(true, `Microsandbox acceptance unavailable: ${reason}`);

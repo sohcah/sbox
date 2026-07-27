@@ -18,10 +18,7 @@ import { SboxError, throwIfAborted } from "../errors.js";
 import type { NativeRuntime } from "../native-runtime.js";
 import type { HostNetworkConfig } from "../network/types.js";
 import { ensureFormatterImage } from "./ensure-formatter.js";
-import {
-  DEFAULT_VOLUME_FORMATTER_IMAGE,
-  volumeFormatterImage,
-} from "./formatter-image.js";
+import { DEFAULT_VOLUME_FORMATTER_IMAGE, volumeFormatterImage } from "./formatter-image.js";
 import {
   qemuImgConvertRawToQcow2,
   qemuImgInfo,
@@ -49,9 +46,7 @@ export interface FormatBasePorts {
    * Ensure the formatter image is available to Microsandbox before create.
    * Defaults to {@link ensureFormatterImage} (auto-build the packaged default).
    */
-  readonly ensureFormatterImage?: (options?: {
-    readonly signal?: AbortSignal;
-  }) => Promise<unknown>;
+  readonly ensureFormatterImage?: (options?: { readonly signal?: AbortSignal }) => Promise<unknown>;
 }
 
 export interface FormatAndPublishBaseRequest {
@@ -94,9 +89,7 @@ export async function formatAndPublishBase(
     const ensure =
       ports.ensureFormatterImage ??
       ((opts?: { readonly signal?: AbortSignal }) => ensureFormatterImage(opts));
-    await ensure(
-      request.signal !== undefined ? { signal: request.signal } : undefined,
-    );
+    await ensure(request.signal !== undefined ? { signal: request.signal } : undefined);
 
     const live = await ports.runtime.create({
       name: formatterName,

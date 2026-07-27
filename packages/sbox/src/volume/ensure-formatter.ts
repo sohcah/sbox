@@ -16,10 +16,7 @@ import { encodeDockerBuild, encodeDockerSave } from "../image/docker-argv.js";
 import { nativeImageGet, nativeImageLoad } from "../image/native-images.js";
 import { hostDockerPlatform } from "../image/platform.js";
 import { runExactCommand, type RunExactCommand } from "../image/subprocess.js";
-import {
-  DEFAULT_VOLUME_FORMATTER_IMAGE,
-  volumeFormatterImage,
-} from "./formatter-image.js";
+import { DEFAULT_VOLUME_FORMATTER_IMAGE, volumeFormatterImage } from "./formatter-image.js";
 
 export interface EnsureFormatterImagePorts {
   readonly get?: (reference: string) => Promise<unknown | null>;

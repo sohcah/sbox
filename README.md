@@ -63,7 +63,7 @@ pnpm test:acceptance       # optional real Microsandbox (needs runtime)
                            # unavailable is reported as a skipped Vitest test, not a pass
 ```
 
-## Quick start (0.2.1)
+## Quick start (0.2.2)
 
 ```bash
 sbox init --project demo

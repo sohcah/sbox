@@ -15,6 +15,11 @@ import {
 } from "./network/types.js";
 import type { HostVolumeAttachment, VolumeAttachmentSpec } from "./volume/types.js";
 import { canonicalVolumesFingerprint } from "./ownership-adoption.js";
+import {
+  canonicalDirectoriesFingerprint,
+  type DirectoryAttachmentSpec,
+  type HostDirectoryMount,
+} from "./directory/types.js";
 
 /** SDK defaults observed from microsandbox@0.6.6 minimal builder.build(). */
 export const PHASE1_DEFAULT_CPUS = 1;
@@ -39,6 +44,7 @@ export function projectCreateRequest(request: {
   readonly network?: HostNetworkConfig;
   readonly secrets?: readonly ResolvedRuntimeSecret[];
   readonly volumes?: readonly HostVolumeAttachment[] | readonly VolumeAttachmentSpec[];
+  readonly directories?: readonly HostDirectoryMount[] | readonly DirectoryAttachmentSpec[];
 }): SandboxImmutableCreation {
   const secrets: readonly SafeRuntimeSecret[] = Object.freeze(
     (request.secrets ?? []).map((secret) =>
@@ -52,6 +58,17 @@ export function projectCreateRequest(request: {
   const volumes: readonly VolumeAttachmentSpec[] = Object.freeze(
     (request.volumes ?? []).map((attachment) =>
       Object.freeze({ volume: attachment.volume, path: attachment.path }),
+    ),
+  );
+  const directories: readonly DirectoryAttachmentSpec[] = Object.freeze(
+    canonicalDirectoriesFingerprint(
+      (request.directories ?? []).map((entry) => ({
+        source: entry.source,
+        path: entry.path,
+        mount: entry.mount,
+        readonly: entry.readonly,
+        ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+      })),
     ),
   );
   return Object.freeze({
@@ -68,6 +85,7 @@ export function projectCreateRequest(request: {
     network: request.network ?? defaultNetworkConfig(),
     secrets,
     volumes,
+    directories,
   });
 }
 
@@ -91,7 +109,9 @@ export function immutableCreationEquals(
     JSON.stringify(canonicalSecretsFingerprint(left.secrets)) ===
       JSON.stringify(canonicalSecretsFingerprint(right.secrets)) &&
     JSON.stringify(canonicalVolumesFingerprint(left.volumes)) ===
-      JSON.stringify(canonicalVolumesFingerprint(right.volumes))
+      JSON.stringify(canonicalVolumesFingerprint(right.volumes)) &&
+    JSON.stringify(canonicalDirectoriesFingerprint(left.directories)) ===
+      JSON.stringify(canonicalDirectoriesFingerprint(right.directories))
   );
 }
 
@@ -151,6 +171,12 @@ export function immutableCreationDriftFields(
     JSON.stringify(canonicalVolumesFingerprint(actual.volumes))
   ) {
     fields.push("volumes");
+  }
+  if (
+    JSON.stringify(canonicalDirectoriesFingerprint(expected.directories)) !==
+    JSON.stringify(canonicalDirectoriesFingerprint(actual.directories))
+  ) {
+    fields.push("directories");
   }
   return fields;
 }

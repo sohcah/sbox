@@ -33,6 +33,29 @@ export interface VolumeAttachment {
   readonly path: string;
 }
 
+/** Profile Host directory mount (Client or Host path into the guest). */
+export interface DirectoryMountConfig {
+  /** Client or Host filesystem path (see `source`). */
+  readonly path: string;
+  /** Absolute guest mount path. */
+  readonly mount: string;
+  /** Default `client`. */
+  readonly source?: "client" | "host";
+  /** Default `true`. Writable only when `source: host`. */
+  readonly readonly?: boolean;
+  /** Binary size string; required when writable. */
+  readonly quota?: string;
+}
+
+/** Safe projection of a directory mount. */
+export interface SafeDirectoryMount {
+  readonly path: string;
+  readonly mount: string;
+  readonly source: "client" | "host";
+  readonly readonly: boolean;
+  readonly quota?: string;
+}
+
 /**
  * Dockerfile-backed build definition. Mutually exclusive with `image`.
  * Paths are config-relative until resolved against the config directory.
@@ -79,6 +102,8 @@ export interface ProfileCommon {
   readonly secrets?: readonly RuntimeSecretConfig[];
   /** Attachments of project-declared volumes (ordinary sandboxes get child overlays). */
   readonly volumes?: readonly VolumeAttachment[];
+  /** Host directory mounts (Client/Host paths into the guest). */
+  readonly directories?: readonly DirectoryMountConfig[];
 }
 
 /** Existing OCI/native image reference profile. */
@@ -165,6 +190,7 @@ export interface SafeProjectConfig {
         readonly network?: SafeNetworkConfig;
         readonly secrets?: readonly SafeRuntimeSecret[];
         readonly volumes?: readonly VolumeAttachment[];
+        readonly directories?: readonly SafeDirectoryMount[];
       }
     >
   >;

@@ -77,6 +77,47 @@ const volumeAttachmentSchema = z.object({
   sizeBytes: z.number().int().positive(),
 });
 
+const directoryMountSchema = z
+  .object({
+    source: z.enum(["client", "host"]),
+    path: z.string().min(1),
+    mount: z.string().min(1),
+    readonly: z.boolean(),
+    quotaMiB: z.number().int().positive().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.source === "host") {
+      if (!value.path.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(value.path)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["path"],
+          message: "Host path must be absolute.",
+        });
+      }
+    }
+    if (value.source === "client" && !value.readonly) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["readonly"],
+        message: "Client-sourced directory mounts must be read-only.",
+      });
+    }
+    if (value.readonly && value.quotaMiB !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["quotaMiB"],
+        message: "Quota is only allowed for writable Host directory mounts.",
+      });
+    }
+    if (!value.readonly && value.quotaMiB === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["quotaMiB"],
+        message: "Writable Host directory mounts require an explicit quota.",
+      });
+    }
+  });
+
 export const createRequestSchema = z.object({
   identity: identitySchema,
   image: z.string().min(1),
@@ -92,6 +133,7 @@ export const createRequestSchema = z.object({
   network: hostNetworkSchema.optional(),
   secrets: z.array(resolvedSecretSchema).optional(),
   volumes: z.array(volumeAttachmentSchema).optional(),
+  directories: z.array(directoryMountSchema).optional(),
 });
 
 export const listSandboxesQuerySchema = z.object({

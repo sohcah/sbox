@@ -22,12 +22,13 @@ export interface NativeDiskMount {
   readonly fstype: "ext4" | null;
 }
 
-/** Host directory bind (formatter staging only — not a product mount surface). */
+/** Host directory bind. */
 export interface NativeBindMount {
   readonly guestPath: string;
   readonly hostPath: string;
-  /** Guest-write quota in MiB; required by Microsandbox bind mounts. */
-  readonly quotaMiB: number;
+  readonly readonly: boolean;
+  /** Guest-write quota in MiB; required when readonly is false. */
+  readonly quotaMiB?: number;
 }
 
 export interface NativeSandboxRecord {
@@ -48,6 +49,8 @@ export interface NativeSandboxRecord {
   readonly network: HostNetworkConfig;
   readonly secrets: readonly SafeRuntimeSecret[];
   readonly mounts: readonly NativeDiskMount[];
+  /** Decoded Bind mounts from SandboxConfig (Host directory mounts). */
+  readonly bindMounts: readonly NativeBindMount[];
   readonly createdAt?: string;
   readonly updatedAt?: string;
 }
@@ -72,8 +75,7 @@ export interface NativeCreateRequest {
   /** Managed disk mounts (child overlays or maintenance base). */
   readonly mounts?: readonly NativeDiskMount[];
   /**
-   * Internal bind mounts (formatter staging directory). Not decoded from
-   * persisted ordinary sandboxes and not exposed on profiles.
+   * Bind mounts: product Host directory mounts and internal formatter staging.
    */
   readonly bindMounts?: readonly NativeBindMount[];
 }

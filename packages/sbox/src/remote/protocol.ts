@@ -12,7 +12,7 @@ import {
 import type { HostCapabilities } from "../types.js";
 
 /** Integer protocol version. Pre-1 releases do not carry parallel protocols. */
-export const SBOX_PROTOCOL_VERSION = 1 as const;
+export const SBOX_PROTOCOL_VERSION = 2 as const;
 
 export interface HealthResponse {
   readonly ok: true;

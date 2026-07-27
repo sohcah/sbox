@@ -119,7 +119,7 @@ describe("runDoctor", () => {
     expect(byName["node"]?.required).toBe(true);
     expect(byName["node"]?.ok).toBe(true);
     expect(byName["node"]?.detail).toContain("v24.1.0");
-    expect(byName["protocol"]?.detail).toContain("protocol 1");
+    expect(byName["protocol"]?.detail).toContain("protocol 2");
     expect(byName["target-mode"]?.detail).toBe("local-host");
     expect(byName["docker"]?.required).toBe(false);
     expect(byName["docker"]?.ok).toBe(false);

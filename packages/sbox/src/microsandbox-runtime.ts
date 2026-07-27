@@ -75,9 +75,15 @@ class MicrosandboxRuntime implements NativeRuntime {
       }
 
       for (const mount of request.bindMounts ?? []) {
-        builder = builder.volume(mount.guestPath, (m) =>
-          m.bind(mount.hostPath).quota(mount.quotaMiB),
-        );
+        builder = builder.volume(mount.guestPath, (m) => {
+          let next = m.bind(mount.hostPath);
+          if (mount.readonly) {
+            next = next.readonly();
+          } else if (mount.quotaMiB !== undefined) {
+            next = next.quota(mount.quotaMiB);
+          }
+          return next;
+        });
       }
 
       const sandbox = await builder.create();
@@ -216,6 +222,12 @@ export function recordFromHandle(handle: {
       hostPath: mount.hostPath,
       format: mount.format === "raw" ? "raw" : "qcow2",
       fstype: mount.fstype === "ext4" ? "ext4" : null,
+    })),
+    bindMounts: decoded.bindMounts.map((mount) => ({
+      guestPath: mount.guestPath,
+      hostPath: mount.hostPath,
+      readonly: mount.readonly,
+      ...(mount.quotaMiB !== undefined ? { quotaMiB: mount.quotaMiB } : {}),
     })),
     ...(handle.createdAt !== null ? { createdAt: handle.createdAt.toISOString() } : {}),
     ...(handle.updatedAt !== null ? { updatedAt: handle.updatedAt.toISOString() } : {}),

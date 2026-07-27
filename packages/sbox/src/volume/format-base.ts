@@ -114,6 +114,7 @@ export async function formatAndPublishBase(
         {
           guestPath: GUEST_STAGING_DIR,
           hostPath: stagingDir,
+          readonly: false,
           quotaMiB,
         },
       ],

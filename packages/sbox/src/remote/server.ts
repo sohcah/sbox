@@ -34,6 +34,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { materializeArchive, packHostPath, removeMaterialized } from "./materialize.js";
 import {
+  materializeClientDirectoryStages,
+  removeDirectoryStageGeneration,
+  removeDirectoryStages,
+} from "../directory/stages.js";
+import { assertBindableDirectory } from "../directory/assert-directory.js";
+import { assertHostDirectoryMounts } from "../directory/validate.js";
+import {
   SBOX_PROTOCOL_VERSION,
   httpStatusForError,
   toErrorResponse,
@@ -204,9 +211,45 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
     }
 
     if (req.method === "POST" && url.pathname === "/v1/sandboxes") {
-      const body = createRequestSchema.parse(await readJson(req, limits.maxRequestBytes));
+      const metaHeader = req.headers["x-sbox-create-request"];
+      if (typeof metaHeader !== "string") {
+        throw SboxError.validation("Missing x-sbox-create-request header.");
+      }
+      const body = createRequestSchema.parse(
+        JSON.parse(Buffer.from(metaHeader, "base64url").toString("utf8")),
+      );
+      const archiveBuf = await readBody(req, limits.maxArchiveBytes);
+      const archive = decodeTransferArchive(archiveBuf);
+      const identity = assertSandboxIdentity(body.identity);
+      // bindHostPath is server-only staging metadata; never accepted from the wire.
+      const directoriesIn = (body.directories ?? []).map((entry) => ({
+        source: entry.source,
+        path: entry.path,
+        mount: entry.mount,
+        readonly: entry.readonly,
+        ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+      }));
+      assertHostDirectoryMounts(directoriesIn, body.volumes);
+      for (let i = 0; i < directoriesIn.length; i += 1) {
+        const entry = directoriesIn[i]!;
+        if (entry.source === "host") {
+          await assertBindableDirectory(entry.path, `directories.${i}.path`);
+        }
+      }
+      let staged = directoriesIn;
+      let generationRoot: string | undefined;
+      if (directoriesIn.some((entry) => entry.source === "client")) {
+        const materialized = await materializeClientDirectoryStages({
+          identity,
+          directories: directoriesIn,
+          archive,
+          signal,
+        });
+        staged = [...materialized.directories];
+        generationRoot = materialized.generationRoot;
+      }
       const request = {
-        identity: assertSandboxIdentity(body.identity),
+        identity,
         image: body.image,
         ...(body.cpus !== undefined ? { cpus: body.cpus } : {}),
         ...(body.memoryMiB !== undefined ? { memoryMiB: body.memoryMiB } : {}),
@@ -220,8 +263,17 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
         ...(body.network !== undefined ? { network: body.network } : {}),
         ...(body.secrets !== undefined ? { secrets: body.secrets } : {}),
         ...(body.volumes !== undefined ? { volumes: body.volumes } : {}),
+        ...(staged.length > 0 ? { directories: staged } : {}),
       } as import("../types.js").HostCreateRequest;
-      const inspection = await options.host.create(request, { signal });
+      let inspection;
+      try {
+        inspection = await options.host.create(request, { signal });
+      } catch (error) {
+        if (generationRoot !== undefined) {
+          await removeDirectoryStageGeneration(generationRoot);
+        }
+        throw error;
+      }
       writeJson(res, 200, inspection);
       return;
     }
@@ -263,6 +315,7 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
       }
       if (req.method === "DELETE" && action === undefined) {
         await options.host.remove(identity, { signal });
+        await removeDirectoryStages(identity);
         res.writeHead(204);
         res.end();
         return;

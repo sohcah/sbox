@@ -43,6 +43,7 @@ import { listStaleImageWorkspaces } from "./image/workspace.js";
 import { createRedactingLogger, safeLog, silentLogger, type Logger } from "./logging.js";
 import { createMicrosandboxRuntime } from "./microsandbox-runtime.js";
 import type {
+  NativeBindMount,
   NativeDiskMount,
   NativeLiveHandle,
   NativeRuntime,
@@ -52,6 +53,10 @@ import { mapNativeStatus } from "./native-runtime.js";
 import { buildOwnershipLabels, matchOwnedCreation } from "./ownership-adoption.js";
 import { inspectOwnershipLabels, type LabelMap } from "./ownership.js";
 import { projectCreateRequest, type ImmutableCreationProjection } from "./immutable-creation.js";
+import { assertBindableDirectory } from "./directory/assert-directory.js";
+import { directoriesFromLabels } from "./directory/labels.js";
+import { removeDirectoryStages } from "./directory/stages.js";
+import { assertHostDirectoryMounts } from "./directory/validate.js";
 import type {
   HostCopyPaths,
   HostExecArgvRequest,
@@ -169,6 +174,7 @@ class LocalHost implements Host {
       }
 
       const volumePrep = await this.prepareCreateVolumes(identity, request, options?.signal);
+      const bindMounts = await this.prepareDirectoryBinds(request);
       let published = false;
       try {
         const live = await this.runtime.create({
@@ -188,6 +194,7 @@ class LocalHost implements Host {
           network: projected.network,
           secrets: request.secrets ?? [],
           ...(volumePrep.mounts.length > 0 ? { mounts: volumePrep.mounts } : {}),
+          ...(bindMounts.length > 0 ? { bindMounts } : {}),
         });
         published = true;
         this.liveByName.set(nativeName, live);
@@ -383,6 +390,7 @@ class LocalHost implements Host {
       await this.runtime.remove(nativeName);
       this.liveByName.delete(nativeName);
       await this.cleanupManagedOverlays(identity, current.mounts);
+      await removeDirectoryStages(normalized);
     });
   }
 
@@ -1107,7 +1115,35 @@ class LocalHost implements Host {
         labels: record.labels,
         dataRoot: this.volumeDataRoot,
       }),
+      directories: [...directoriesFromLabels(record.labels)],
     };
+  }
+
+  private async prepareDirectoryBinds(
+    request: HostCreateRequest,
+  ): Promise<readonly NativeBindMount[]> {
+    const entries = request.directories ?? [];
+    if (entries.length === 0) {
+      return [];
+    }
+    const out: NativeBindMount[] = [];
+    for (let i = 0; i < entries.length; i += 1) {
+      const entry = entries[i]!;
+      const hostPath = entry.bindHostPath ?? entry.path;
+      await assertBindableDirectory(hostPath, `directories.${i}.path`);
+      if (!entry.readonly && entry.quotaMiB === undefined) {
+        throw SboxError.validation("Writable directory mounts require quotaMiB.", {
+          details: { path: `directories.${i}.quota` },
+        });
+      }
+      out.push({
+        guestPath: entry.mount,
+        hostPath,
+        readonly: entry.readonly,
+        ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+      });
+    }
+    return Object.freeze(out);
   }
 
   private validateCreateRequest(request: HostCreateRequest): void {
@@ -1160,6 +1196,7 @@ class LocalHost implements Host {
         },
       });
     }
+    assertHostDirectoryMounts(request.directories, request.volumes);
     // Capability-gated: Microsandbox 0.6.6 accepts host 0 but does not expose the
     // allocated port for inspection, so LocalHost refuses dynamic publication.
     for (let i = 0; i < network.publish.length; i += 1) {
@@ -1416,6 +1453,8 @@ class LocalHost implements Host {
         labels: record.labels,
         dataRoot: this.volumeDataRoot,
       }),
+      directories: [...directoriesFromLabels(record.labels)],
+      bindMounts: record.bindMounts,
     };
   }
 }

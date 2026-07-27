@@ -1,0 +1,33 @@
+{
+  "fixtureNote": "Captured via Sandbox.builder(...).volume(...).bind().readonly() / .quota(64).create() then Sandbox.get(...).config() on microsandbox@0.6.6. Host paths rewritten to stable placeholders; other mount fields are verbatim from the SDK. A default /tmp Tmpfs entry was omitted from this fixture.",
+  "mounts": [
+    {
+      "type": "Bind",
+      "host": "/tmp/example-vendor",
+      "guest": "/vendor",
+      "options": {
+        "readonly": true,
+        "noexec": false,
+        "nosuid": false,
+        "nodev": false
+      },
+      "statVirtualization": "strict",
+      "hostPermissions": "private",
+      "quotaMib": null
+    },
+    {
+      "type": "Bind",
+      "host": "/tmp/example-tools",
+      "guest": "/tools",
+      "options": {
+        "readonly": false,
+        "noexec": false,
+        "nosuid": false,
+        "nodev": false
+      },
+      "statVirtualization": "strict",
+      "hostPermissions": "private",
+      "quotaMib": 64
+    }
+  ]
+}

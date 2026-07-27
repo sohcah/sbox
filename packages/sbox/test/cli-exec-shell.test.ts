@@ -67,6 +67,7 @@ async function seedDefault(host: FakeHost): Promise<void> {
       network: toSafeNetworkConfig(defaultNetworkConfig()),
       secrets: [],
       volumes: [],
+      directories: [],
     },
   });
 }

@@ -45,6 +45,7 @@ import { listStaleImageWorkspaces } from "./image/workspace.js";
 import { createRedactingLogger, safeLog, silentLogger, type Logger } from "./logging.js";
 import { inspectOwnershipLabels } from "./ownership.js";
 import { buildOwnershipLabels } from "./ownership-adoption.js";
+import { assertHostDirectoryMounts } from "./directory/validate.js";
 import { projectCreateRequest } from "./immutable-creation.js";
 import {
   FakeSandboxFilesystem,
@@ -701,6 +702,7 @@ export class FakeHost implements Host {
         network: toSafeNetworkConfig(defaultNetworkConfig()),
         secrets: [],
         volumes: [],
+        directories: [],
       },
       env: {},
       maxDurationSecs: null,
@@ -849,6 +851,8 @@ export class FakeHost implements Host {
       });
     }
 
+    assertHostDirectoryMounts(request.directories, request.volumes);
+
     // Capability-gated dynamic host ports (toggleable for unit tests).
     this.assertDynamicHostPortsSupported(network, this.dynamicHostPorts);
   }
@@ -994,6 +998,7 @@ function creationFromProjection(
     ),
     secrets: [...projected.secrets],
     volumes: [...projected.volumes],
+    directories: [...projected.directories],
   };
 }
 

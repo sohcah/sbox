@@ -4,6 +4,7 @@
 
 import { createLocalHost } from "../../local-host.js";
 import { createSboxServer } from "../../remote/server.js";
+import { SBOX_PROTOCOL_VERSION } from "../../remote/protocol.js";
 import { SboxError } from "../../errors.js";
 import { createRedactingLogger } from "../../logging.js";
 import type { CliContext } from "../context.js";
@@ -58,7 +59,7 @@ export async function runServe(ctx: CliContext, options: ServeOptions = {}): Pro
           url: server.url,
           bind: server.bind,
           port: server.port,
-          protocolVersion: 1,
+          protocolVersion: SBOX_PROTOCOL_VERSION,
         },
       },
       ctx.format,

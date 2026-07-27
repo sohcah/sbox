@@ -226,6 +226,8 @@ describe("network decode and fingerprint round-trip", () => {
           network: actual.network,
           secrets: actual.secrets,
           volumes: actual.volumes,
+          directories: actual.directories,
+          bindMounts: [],
         },
         expected,
       ),

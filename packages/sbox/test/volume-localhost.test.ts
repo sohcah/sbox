@@ -390,6 +390,7 @@ describe("LocalHost managed volumes", () => {
     expect(seenBind).toEqual([
       expect.objectContaining({
         guestPath: "/sbox-format",
+        readonly: false,
         quotaMiB: expect.any(Number),
       }),
     ]);

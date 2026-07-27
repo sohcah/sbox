@@ -32,7 +32,7 @@ import type { HostEnsureImageRequest } from "../image/types.js";
 import { hostDockerPlatform } from "../image/platform.js";
 import { normalizePosixRelative } from "../image/context.js";
 import { throwAccumulatedValidation } from "../config/validate.js";
-import { parseBinarySizeToBytes } from "../config/scalars.js";
+import { parseBinarySizeToBytes, parseBinarySizeToMiB } from "../config/scalars.js";
 import {
   mergeNetworkConfigs,
   normalizeAllowRule,
@@ -52,7 +52,8 @@ import {
   validateResolvedRuntimeSecrets,
 } from "../network/validate.js";
 import type { HostVolumeAttachment } from "../volume/types.js";
-
+import type { HostDirectoryMount } from "../directory/types.js";
+import { normalizeDirectoryMountConfig } from "../directory/normalize.js";
 export interface ResolveCreateInput {
   readonly project: ProjectConfig;
   readonly profile?: string;
@@ -129,6 +130,11 @@ export async function resolveCreateIntent(
 
   const image = resolveProfileImage(selected.profile, selected.name, input.resolvedImage);
   const volumes = resolveProfileVolumes(input.project, selected.profile, selected.name);
+  const directories = resolveProfileDirectories(
+    selected.profile,
+    selected.name,
+    input.external.configDirectory,
+  );
   const request = profileToCreateRequest(
     identity,
     selected.profile,
@@ -137,6 +143,7 @@ export async function resolveCreateIntent(
     network,
     secretsResult.values,
     volumes,
+    directories,
   );
   const projected = projectCreateRequest(request);
   return { identity, request, projected };
@@ -184,6 +191,62 @@ function resolveProfileVolumes(
   }
   if (issues.length > 0) {
     throwAccumulatedValidation(issues, "Sandbox volume validation failed.");
+  }
+  return Object.freeze(out);
+}
+
+function resolveProfileDirectories(
+  profile: ProfileConfig,
+  profileName: string,
+  configDirectory: string,
+): readonly HostDirectoryMount[] {
+  const attachments = profile.directories ?? [];
+  if (attachments.length === 0) {
+    return [];
+  }
+  const out: HostDirectoryMount[] = [];
+  const issues: ConfigurationIssue[] = [];
+  const seenMounts = new Set<string>((profile.volumes ?? []).map((v) => v.path));
+  for (let i = 0; i < attachments.length; i += 1) {
+    const pathPrefix = `profiles.${profileName}.directories.${i}`;
+    const normalized = normalizeDirectoryMountConfig(attachments[i]!, pathPrefix);
+    if (!normalized.ok) {
+      issues.push(...normalized.issues);
+      continue;
+    }
+    const entry = normalized.value;
+    if (seenMounts.has(entry.mount)) {
+      issues.push({
+        path: `${pathPrefix}.mount`,
+        message: `Guest path "${entry.mount}" is already used by a volume or directory mount.`,
+      });
+      continue;
+    }
+    seenMounts.add(entry.mount);
+    const resolvedPath =
+      entry.source === "client" ? resolve(configDirectory, entry.path) : entry.path;
+    let quotaMiB = entry.quotaMiB;
+    if (!entry.readonly && entry.quota !== undefined && quotaMiB === undefined) {
+      try {
+        quotaMiB = parseBinarySizeToMiB(entry.quota, `${pathPrefix}.quota`);
+      } catch (error) {
+        issues.push({
+          path: `${pathPrefix}.quota`,
+          message: error instanceof Error ? error.message : "Invalid quota.",
+        });
+        continue;
+      }
+    }
+    out.push({
+      source: entry.source,
+      path: resolvedPath,
+      mount: entry.mount,
+      readonly: entry.readonly,
+      ...(quotaMiB !== undefined ? { quotaMiB } : {}),
+    });
+  }
+  if (issues.length > 0) {
+    throwAccumulatedValidation(issues, "Sandbox directory mount validation failed.");
   }
   return Object.freeze(out);
 }
@@ -275,6 +338,7 @@ export function profileToCreateRequest(
   network: HostNetworkConfig,
   secrets: readonly ResolvedRuntimeSecret[],
   volumes: readonly HostVolumeAttachment[],
+  directories: readonly HostDirectoryMount[] = [],
 ): HostCreateRequest {
   return {
     identity,
@@ -291,6 +355,7 @@ export function profileToCreateRequest(
     network,
     ...(secrets.length > 0 ? { secrets } : {}),
     ...(volumes.length > 0 ? { volumes } : {}),
+    ...(directories.length > 0 ? { directories } : {}),
   };
 }
 
@@ -464,6 +529,7 @@ export function reportCreationDrift(
       value: "",
     })),
     volumes: inspection.creation.volumes,
+    directories: inspection.creation.directories,
   });
 
   const expectedVisible: SandboxImmutableCreation = Object.freeze({

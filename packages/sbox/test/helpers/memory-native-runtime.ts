@@ -72,6 +72,7 @@ export class MemoryNativeRuntime implements NativeRuntime {
           network: defaultNetworkConfig(),
           secrets: [],
           mounts: [],
+          bindMounts: [],
         },
       });
       throw SboxError.internal("Simulated uncertain create failure (conflict).");
@@ -188,10 +189,11 @@ export class MemoryNativeRuntime implements NativeRuntime {
   }
 
   seed(
-    record: Omit<NativeSandboxRecord, "network" | "secrets" | "mounts"> & {
+    record: Omit<NativeSandboxRecord, "network" | "secrets" | "mounts" | "bindMounts"> & {
       readonly network?: NativeSandboxRecord["network"];
       readonly secrets?: NativeSandboxRecord["secrets"];
       readonly mounts?: NativeSandboxRecord["mounts"];
+      readonly bindMounts?: NativeSandboxRecord["bindMounts"];
     },
   ): void {
     this.byName.set(record.name, {
@@ -200,6 +202,7 @@ export class MemoryNativeRuntime implements NativeRuntime {
         network: record.network ?? defaultNetworkConfig(),
         secrets: record.secrets ?? [],
         mounts: record.mounts ?? [],
+        bindMounts: record.bindMounts ?? [],
       }),
     });
   }
@@ -272,6 +275,16 @@ export class MemoryNativeRuntime implements NativeRuntime {
           }),
         ),
       ),
+      bindMounts: Object.freeze(
+        (request.bindMounts ?? []).map((mount) =>
+          Object.freeze({
+            guestPath: mount.guestPath,
+            hostPath: mount.hostPath,
+            readonly: mount.readonly,
+            ...(mount.quotaMiB !== undefined ? { quotaMiB: mount.quotaMiB } : {}),
+          }),
+        ),
+      ),
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
     };
@@ -308,6 +321,16 @@ function cloneRecord(record: NativeSandboxRecord): NativeSandboxRecord {
           hostPath: mount.hostPath,
           format: mount.format,
           fstype: mount.fstype,
+        }),
+      ),
+    ),
+    bindMounts: Object.freeze(
+      (record.bindMounts ?? []).map((mount) =>
+        Object.freeze({
+          guestPath: mount.guestPath,
+          hostPath: mount.hostPath,
+          readonly: mount.readonly,
+          ...(mount.quotaMiB !== undefined ? { quotaMiB: mount.quotaMiB } : {}),
         }),
       ),
     ),

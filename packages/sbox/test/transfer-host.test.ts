@@ -43,6 +43,7 @@ function seedRunning(host: FakeHost): SandboxIdentity {
       network: toSafeNetworkConfig(defaultNetworkConfig()),
       secrets: [],
       volumes: [],
+      directories: [],
     },
   });
   return id;

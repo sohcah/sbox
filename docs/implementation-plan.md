@@ -658,6 +658,6 @@ this plan:
 - service installation or built-in TLS;
 - cross-process image-build coordination;
 - private-registry/advanced SDK network and secret configuration;
-- arbitrary host binds, native handle escape, or SDK pass-through options;
+- native handle escape or SDK pass-through options;
 - detached process supervision or filesystem synchronization;
 - Podman/pluggable builders, cross-architecture images, or automatic pruning.

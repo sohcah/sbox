@@ -150,6 +150,7 @@ describe("immutable creation projection", () => {
       },
       secrets: [],
       volumes: [],
+      directories: [],
     });
   });
 
@@ -219,6 +220,8 @@ describe("immutable creation projection", () => {
           network: defaultNetworkConfig(),
           secrets: [],
           volumes: [],
+          directories: [],
+          bindMounts: [],
         },
         requested,
       ),
@@ -239,6 +242,8 @@ describe("immutable creation projection", () => {
           network: defaultNetworkConfig(),
           secrets: [],
           volumes: [],
+          directories: [],
+          bindMounts: [],
         },
         requested,
       ),
@@ -259,6 +264,8 @@ describe("immutable creation projection", () => {
           network: defaultNetworkConfig(),
           secrets: [],
           volumes: [],
+          directories: [],
+          bindMounts: [],
         },
         requested,
       ),

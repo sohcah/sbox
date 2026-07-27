@@ -53,6 +53,8 @@ import type {
   HostVolumeSummary,
 } from "../volume/types.js";
 import { BoundedAsyncQueue, DEFAULT_STREAM_QUEUE_CAPACITY } from "../process/bounded-queue.js";
+import { packClientDirectoryArchive } from "../directory/stages.js";
+import { assertHostDirectoryMounts } from "../directory/validate.js";
 import { decodeTransferArchive, encodeTransferArchive } from "./archive-wire.js";
 import { bytesToBase64, decodeProcessResult, encodeProcessResult, base64ToBytes } from "./bytes.js";
 import { resolveRemoteLimits, type RemoteLimits } from "./limits.js";
@@ -91,7 +93,27 @@ class RemoteHostImpl implements Host {
   }
 
   async create(request: HostCreateRequest, options?: OperationOptions): Promise<SandboxInspection> {
-    return this.json("POST", "/v1/sandboxes", request, options?.signal);
+    throwIfAborted(options?.signal);
+    assertHostDirectoryMounts(request.directories, request.volumes);
+    const wireRequest = stripBindHostPaths(request);
+    const archive = await packClientDirectoryArchive(
+      wireRequest.directories ?? [],
+      options?.signal !== undefined ? { signal: options.signal } : {},
+    );
+    const body = encodeTransferArchive(archive);
+    const response = await this.fetchRaw(
+      "POST",
+      "/v1/sandboxes",
+      body,
+      {
+        "content-type": "application/octet-stream",
+        "x-sbox-create-request": Buffer.from(JSON.stringify(wireRequest), "utf8").toString(
+          "base64url",
+        ),
+      },
+      options?.signal,
+    );
+    return (await response.json()) as SandboxInspection;
   }
 
   async get(
@@ -884,4 +906,22 @@ class RemoteHostImpl implements Host {
 
 function enc(value: string): string {
   return encodeURIComponent(value);
+}
+
+/** `bindHostPath` is server-only; never send it on the wire. */
+function stripBindHostPaths(request: HostCreateRequest): HostCreateRequest {
+  const directories = request.directories;
+  if (directories === undefined || directories.length === 0) {
+    return request;
+  }
+  return {
+    ...request,
+    directories: directories.map((entry) => ({
+      source: entry.source,
+      path: entry.path,
+      mount: entry.mount,
+      readonly: entry.readonly,
+      ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+    })),
+  };
 }

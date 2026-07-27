@@ -140,6 +140,7 @@ export {
 export type {
   ConfigValue,
   ConfigurationIssue,
+  DirectoryMountConfig,
   ExternalValueRef,
   ImageBuildConfig,
   ImageBuildProfile,
@@ -148,6 +149,7 @@ export type {
   ProfileConfig,
   ProjectConfig,
   RemoteTargetConfig,
+  SafeDirectoryMount,
   SafeImageBuildConfig,
   SafeProjectConfig,
   SafeUserConfig,
@@ -251,6 +253,12 @@ export type {
   HostVolumeSummary,
   VolumeAttachmentSpec,
 } from "./volume/types.js";
+
+export type {
+  DirectoryAttachmentSpec,
+  DirectoryMountSource,
+  HostDirectoryMount,
+} from "./directory/types.js";
 
 /** Documented CLI operational exit codes (the runner itself is not exported). */
 export {

@@ -126,6 +126,13 @@ type YamlProfileInput = {
     readonly destinations: readonly string[];
   }[];
   readonly volumes?: readonly { readonly volume: string; readonly path: string }[];
+  readonly directories?: readonly {
+    readonly path: string;
+    readonly mount: string;
+    readonly source?: "client" | "host";
+    readonly readonly?: boolean;
+    readonly quota?: string;
+  }[];
 };
 
 /** Normalize YAML input into the typed project model. */
@@ -190,6 +197,17 @@ function normalizeYamlProjectInput(input: {
             volumes: profile.volumes.map((attachment) => ({
               volume: attachment.volume,
               path: attachment.path,
+            })),
+          }
+        : {}),
+      ...(profile.directories !== undefined
+        ? {
+            directories: profile.directories.map((entry) => ({
+              path: entry.path,
+              mount: entry.mount,
+              ...(entry.source !== undefined ? { source: entry.source } : {}),
+              ...(entry.readonly !== undefined ? { readonly: entry.readonly } : {}),
+              ...(entry.quota !== undefined ? { quota: entry.quota } : {}),
             })),
           }
         : {}),
@@ -320,6 +338,19 @@ export function toSafeProjectConfig(config: ProjectConfig): SafeProjectConfig {
         ? {
             volumes: profile.volumes.map((attachment) =>
               Object.freeze({ volume: attachment.volume, path: attachment.path }),
+            ),
+          }
+        : {}),
+      ...(profile.directories !== undefined
+        ? {
+            directories: profile.directories.map((entry) =>
+              Object.freeze({
+                path: entry.path,
+                mount: entry.mount,
+                source: entry.source ?? "client",
+                readonly: entry.readonly ?? true,
+                ...(entry.quota !== undefined ? { quota: entry.quota } : {}),
+              }),
             ),
           }
         : {}),
@@ -526,6 +557,21 @@ function freezeProjectConfig(config: {
             volumes: Object.freeze(
               profile.volumes.map((attachment) =>
                 Object.freeze({ volume: attachment.volume, path: attachment.path }),
+              ),
+            ),
+          }
+        : {}),
+      ...(profile.directories !== undefined
+        ? {
+            directories: Object.freeze(
+              profile.directories.map((entry) =>
+                Object.freeze({
+                  path: entry.path,
+                  mount: entry.mount,
+                  ...(entry.source !== undefined ? { source: entry.source } : {}),
+                  ...(entry.readonly !== undefined ? { readonly: entry.readonly } : {}),
+                  ...(entry.quota !== undefined ? { quota: entry.quota } : {}),
+                }),
               ),
             ),
           }

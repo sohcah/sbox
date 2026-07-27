@@ -17,6 +17,8 @@
 import { PHASE1_DEFAULT_CPUS, PHASE1_DEFAULT_MEMORY_MIB } from "./immutable-creation.js";
 import { decodeNetworkEvidence, hostNetworkFromEvidence } from "./network/decode.js";
 import type { HostNetworkConfig, SafeRuntimeSecret } from "./network/types.js";
+import { decodeBindMounts } from "./directory/decode-binds.js";
+import type { NativeBindMount } from "./native-runtime.js";
 import { decodeDiskMounts } from "./volume/mounts.js";
 
 export interface DecodedSandboxConfig {
@@ -39,6 +41,7 @@ export interface DecodedSandboxConfig {
     readonly format: string;
     readonly fstype: string | null;
   }[];
+  readonly bindMounts: readonly NativeBindMount[];
 }
 
 export function decodeSandboxConfig(config: unknown): DecodedSandboxConfig {
@@ -83,6 +86,7 @@ export function decodeSandboxConfig(config: unknown): DecodedSandboxConfig {
         fstype: mount.fstype,
       }),
     ),
+    bindMounts: decodeBindMounts(config),
   };
 }
 

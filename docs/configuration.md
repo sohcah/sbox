@@ -34,6 +34,14 @@ profiles:
     volumes:
       - volume: cache
         path: /cache
+    directories:
+      - path: ./vendor
+        mount: /vendor
+      - path: /var/cache/tools
+        source: host
+        mount: /tools
+        readonly: false
+        quota: 512MiB
     network:
       mode: default-deny
       allow:
@@ -55,6 +63,23 @@ profiles:
 Dockerfile-backed profiles use `build:` instead of `image:` (context +
 optional dockerfile path). Ordinary environment and build args may be literal
 or external refs (`env` / `file` / `invocation`).
+
+## Host directory mounts
+
+Profile `directories:` attach a Client or Host directory into the guest at
+create time (immutable creation; no live refresh or copy-back).
+
+| Field | Default | Notes |
+| --- | --- | --- |
+| `path` | required | Client: relative to project config dir (absolute allowed). Host: absolute on the Host. |
+| `mount` | required | Absolute guest path; unique across `directories` and `volumes`. |
+| `source` | `client` | `client` or `host`. |
+| `readonly` | `true` | Client sources must stay read-only. |
+| `quota` | — | Required when `readonly: false` (Host writable only). |
+
+At create, the path must exist as a real directory (symlink roots rejected).
+On a remote target, Client trees are staged once onto the serve Host, then
+bound read-only; Host paths are validated on the serve machine.
 
 ## User targets
 

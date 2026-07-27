@@ -7,11 +7,13 @@
 export type {
   ConfigValue,
   ConfigurationIssue,
+  DirectoryMountConfig,
   ExternalValueRef,
   LocalTargetConfig,
   ProfileConfig,
   ProjectConfig,
   RemoteTargetConfig,
+  SafeDirectoryMount,
   SafeProjectConfig,
   SafeUserConfig,
   TargetConfig,

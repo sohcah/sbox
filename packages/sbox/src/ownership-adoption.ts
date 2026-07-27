@@ -18,6 +18,13 @@ import {
 import { canonicalNetworkFingerprint, canonicalSecretsFingerprint } from "./network/compile.js";
 import type { HostNetworkConfig, SafeRuntimeSecret } from "./network/types.js";
 import type { VolumeAttachmentSpec } from "./volume/types.js";
+import {
+  canonicalDirectoriesFingerprint,
+  type DirectoryAttachmentSpec,
+} from "./directory/types.js";
+import { directoriesLabelValue } from "./directory/labels.js";
+import { bindMountsMatchDirectories } from "./directory/decode-binds.js";
+import type { NativeBindMount } from "./native-runtime.js";
 
 /**
  * Complete Phase 1 immutable creation projection used for ownership/adoption.
@@ -37,6 +44,7 @@ export interface SandboxImmutableCreation {
   readonly network: HostNetworkConfig;
   readonly secrets: readonly SafeRuntimeSecret[];
   readonly volumes: readonly VolumeAttachmentSpec[];
+  readonly directories: readonly DirectoryAttachmentSpec[];
 }
 
 /**
@@ -49,13 +57,17 @@ export function buildOwnershipLabels(
   identity: SandboxIdentity,
   creation: SandboxImmutableCreation,
 ): LabelMap {
-  return Object.freeze({
+  const labels: Record<string, string> = {
     [OWNERSHIP_LABEL_KEYS.managed]: MANAGED_LABEL_VALUE,
     [OWNERSHIP_LABEL_KEYS.project]: identity.project,
     [OWNERSHIP_LABEL_KEYS.instance]: identity.instance,
     [OWNERSHIP_LABEL_KEYS.profile]: identity.profile,
     [OWNERSHIP_LABEL_KEYS.creation]: creationFingerprint(creation),
-  });
+  };
+  if (creation.directories.length > 0) {
+    labels[OWNERSHIP_LABEL_KEYS.directories] = directoriesLabelValue(creation.directories);
+  }
+  return Object.freeze(labels);
 }
 
 /**
@@ -102,6 +114,9 @@ export type NativeCreationEvidence = {
   readonly network: HostNetworkConfig;
   readonly secrets: readonly SafeRuntimeSecret[];
   readonly volumes: readonly VolumeAttachmentSpec[];
+  readonly directories: readonly DirectoryAttachmentSpec[];
+  /** Decoded native Bind mounts; compared to directories by guest path / mode. */
+  readonly bindMounts: readonly NativeBindMount[];
 };
 
 /**
@@ -143,6 +158,8 @@ export function nativeRecordMatchesCreation(
     readonly network: HostNetworkConfig;
     readonly secrets: readonly SafeRuntimeSecret[];
     readonly volumes: readonly VolumeAttachmentSpec[];
+    readonly directories: readonly DirectoryAttachmentSpec[];
+    readonly bindMounts: readonly NativeBindMount[];
   },
   requested: SandboxImmutableCreation,
 ): boolean {
@@ -191,6 +208,15 @@ export function nativeRecordMatchesCreation(
   ) {
     return false;
   }
+  if (
+    JSON.stringify(canonicalDirectoriesFingerprint(record.directories)) !==
+    JSON.stringify(canonicalDirectoriesFingerprint(requested.directories))
+  ) {
+    return false;
+  }
+  if (!bindMountsMatchDirectories(record.bindMounts, requested.directories)) {
+    return false;
+  }
   return envMatchesAllowingSdkInjected(requested.env, record.env);
 }
 
@@ -233,6 +259,7 @@ function creationFingerprint(projection: SandboxImmutableCreation): string {
     network: canonicalNetworkFingerprint(projection.network),
     secrets: canonicalSecretsFingerprint(projection.secrets),
     volumes: canonicalVolumesFingerprint(projection.volumes),
+    directories: canonicalDirectoriesFingerprint(projection.directories),
   });
   return createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 32);
 }

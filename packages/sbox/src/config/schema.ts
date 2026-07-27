@@ -47,6 +47,50 @@ const volumeAttachmentSchema = z.strictObject({
   path: absoluteGuestPathSchema,
 });
 
+const directoryMountSchema = z
+  .strictObject({
+    path: z.string().min(1),
+    mount: absoluteGuestPathSchema,
+    source: z.enum(["client", "host"]).optional(),
+    readonly: z.boolean().optional(),
+    quota: binarySizeSchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    const source = value.source ?? "client";
+    const readonly = value.readonly ?? true;
+    if (source === "host") {
+      const path = value.path;
+      if (!path.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(path)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["path"],
+          message: "Host path must be absolute.",
+        });
+      }
+    }
+    if (source === "client" && !readonly) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["readonly"],
+        message: "Client-sourced directory mounts must be read-only.",
+      });
+    }
+    if (readonly && value.quota !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["quota"],
+        message: "Quota is only allowed for writable Host directory mounts.",
+      });
+    }
+    if (!readonly && value.quota === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["quota"],
+        message: "Writable Host directory mounts require an explicit quota.",
+      });
+    }
+  });
+
 const buildkitSecretIdSchema = z
   .string()
   .min(1)
@@ -199,6 +243,7 @@ const profileCommonFields = {
   network: networkConfigSchema.optional(),
   secrets: z.array(runtimeSecretConfigSchema).optional(),
   volumes: z.array(volumeAttachmentSchema).optional(),
+  directories: z.array(directoryMountSchema).optional(),
 } as const;
 
 function refineImageOrBuild(
@@ -325,6 +370,7 @@ export const yamlProfileInputSchema = z
     network: networkConfigSchema.optional(),
     secrets: z.array(runtimeSecretConfigSchema).optional(),
     volumes: z.array(volumeAttachmentSchema).optional(),
+    directories: z.array(directoryMountSchema).optional(),
   })
   .superRefine((value, ctx) => {
     refineImageOrBuild(value, ctx);
@@ -352,6 +398,7 @@ export const yamlProjectInputSchema = z
       });
     }
     refineProfileVolumeAttachments(value, ctx);
+    refineProfileDirectoryMounts(value, ctx);
     for (const [name, profile] of Object.entries(value.profiles)) {
       if (profile.memory !== undefined && profile.memoryMiB !== undefined) {
         ctx.addIssue({
@@ -391,6 +438,7 @@ function refineProfileVolumeAttachments(
           readonly volumes?:
             | readonly { readonly volume: string; readonly path: string }[]
             | undefined;
+          readonly directories?: readonly { readonly mount: string }[] | undefined;
         }
       >
     >;
@@ -431,6 +479,46 @@ function refineProfileVolumeAttachments(
         });
       }
       seenPaths.add(attachment.path);
+    }
+  }
+}
+
+function refineProfileDirectoryMounts(
+  value: {
+    readonly profiles: Readonly<
+      Record<
+        string,
+        {
+          readonly volumes?:
+            | readonly { readonly volume: string; readonly path: string }[]
+            | undefined;
+          readonly directories?: readonly { readonly mount: string }[] | undefined;
+        }
+      >
+    >;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  for (const [profileName, profile] of Object.entries(value.profiles)) {
+    const seenPaths = new Set<string>();
+    for (const attachment of profile.volumes ?? []) {
+      seenPaths.add(attachment.path);
+    }
+    const directories = profile.directories;
+    if (directories === undefined) {
+      continue;
+    }
+    for (let i = 0; i < directories.length; i += 1) {
+      const entry = directories[i]!;
+      const pathPrefix = ["profiles", profileName, "directories", i] as const;
+      if (seenPaths.has(entry.mount)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [...pathPrefix, "mount"],
+          message: `Guest path "${entry.mount}" is already used by a volume or directory mount.`,
+        });
+      }
+      seenPaths.add(entry.mount);
     }
   }
 }

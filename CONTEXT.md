@@ -9,11 +9,11 @@ A profile attachment that places a directory into the guest at a path. Declared 
 _Avoid_: bind mount (as the product name), arbitrary host path, raw disk path, volume (reserved for managed QCOW2)
 
 **Client path**:
-A directory on the machine running the sbox client. Declared with `source: client` on a host directory mount. Relative paths resolve against the project config directory; absolute paths are allowed. Must exist as a real directory at create (symlink roots rejected). On a remote target the tree is transferred once at create into a Directory stage before bind. Client-sourced mounts are read-only.
+A directory on the machine running the sbox client. Declared with `source: client` on a host directory mount. Relative paths resolve against the project config directory; `~/…` expands to the client home directory; absolute paths are allowed. Must exist as a real directory at create (symlink roots rejected). On a remote target the tree is transferred once at create into a Directory stage before bind. Client-sourced mounts are read-only.
 _Avoid_: local folder (ambiguous with Host), project path (unless we later pin that meaning)
 
 **Host path**:
-A directory already on the Host that runs Microsandbox (the local machine for LocalHost, the serve machine for RemoteHost). Declared with `source: host`. Must be an absolute path on that Host and exist as a real directory at create (symlink roots rejected). May be mounted read-only or writable.
+A directory already on the Host that runs Microsandbox (the local machine for LocalHost, the serve machine for RemoteHost). Declared with `source: host`. Must be an absolute path on that Host, or a home-relative path beginning with `~/` (expanded on the Host), and exist as a real directory at create (symlink roots rejected). May be mounted read-only or writable.
 _Avoid_: server path, remote path
 
 **Directory stage**:

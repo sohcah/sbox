@@ -5,6 +5,7 @@
 import * as z from "zod";
 import { isPortableSlug } from "../identity.js";
 import { isAbsoluteGuestPath, isBinarySize, isEnvVarName, isPositiveDuration } from "./scalars.js";
+import { isAbsoluteOrHomeRelativeHostPath } from "../directory/home-path.js";
 import type { ProjectConfig, UserConfig } from "./types.js";
 
 const portableSlugSchema = z
@@ -60,11 +61,11 @@ const directoryMountSchema = z
     const readonly = value.readonly ?? true;
     if (source === "host") {
       const path = value.path;
-      if (!path.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(path)) {
+      if (!isAbsoluteOrHomeRelativeHostPath(path)) {
         ctx.addIssue({
           code: "custom",
           path: ["path"],
-          message: "Host path must be absolute.",
+          message: 'Host path must be absolute or home-relative (starting with "~/").',
         });
       }
     }

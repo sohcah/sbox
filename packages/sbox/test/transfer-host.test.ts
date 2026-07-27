@@ -253,7 +253,7 @@ describe("FakeHost transfer contract", () => {
         { identity: id, guestPath: "/tree", hostPath: dest },
         { signal: controller.signal },
       ),
-    ).rejects.toMatchObject({ name: "AbortError" });
+    ).rejects.toMatchObject({ code: "cancellation" });
 
     await expect(lstat(dest)).rejects.toMatchObject({ code: "ENOENT" });
   });

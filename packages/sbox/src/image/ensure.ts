@@ -204,8 +204,10 @@ async function raceSubscriberWait(
     races.push(
       new Promise<never>((_resolve, reject) => {
         onCallerAbort = () => {
-          onAbandon?.();
+          // Reject the subscriber wait before abandoning shared work so
+          // Promise.race settles as cancellation, not a raw AbortError.
           reject(SboxError.cancellation("Image operation was cancelled."));
+          onAbandon?.();
         };
         callerSignal.addEventListener("abort", onCallerAbort, { once: true });
       }),

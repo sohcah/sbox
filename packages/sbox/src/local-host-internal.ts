@@ -57,6 +57,7 @@ import { assertBindableDirectory } from "./directory/assert-directory.js";
 import { directoriesFromLabels } from "./directory/labels.js";
 import { removeDirectoryStages } from "./directory/stages.js";
 import { assertHostDirectoryMounts } from "./directory/validate.js";
+import { expandHomePrefix } from "./directory/home-path.js";
 import type {
   HostCopyPaths,
   HostExecArgvRequest,
@@ -1129,7 +1130,7 @@ class LocalHost implements Host {
     const out: NativeBindMount[] = [];
     for (let i = 0; i < entries.length; i += 1) {
       const entry = entries[i]!;
-      const hostPath = entry.bindHostPath ?? entry.path;
+      const hostPath = expandHomePrefix(entry.bindHostPath ?? entry.path);
       await assertBindableDirectory(hostPath, `directories.${i}.path`);
       if (!entry.readonly && entry.quotaMiB === undefined) {
         throw SboxError.validation("Writable directory mounts require quotaMiB.", {

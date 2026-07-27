@@ -8,7 +8,7 @@ Decisions from the grill (`CONTEXT.md`). Curated **Host directory mounts**
 - Profile `directories:` mount a Client path or Host path into the guest.
 - Defaults: `source: client`, `readonly: true`.
 - `source: client` → always read-only; relative paths resolve against project config directory.
-- `source: host` → absolute Host path only; read-only or writable; writable requires explicit `quota`.
+- `source: host` → absolute Host path, or `~/…` expanded on the Host; read-only or writable; writable requires explicit `quota`.
 - Create-time only (with recreate / `run`); part of immutable creation; no overlays; no content hashing; no copy-back; no live refresh.
 - LocalHost binds resolved paths directly.
 - RemoteHost stages `source: client` trees once at create (Directory stage), binds RO, deletes stage on remove / failed create.

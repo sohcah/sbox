@@ -134,7 +134,7 @@ describe("FakeHost process contract", () => {
     controller.abort();
     await expect(
       host.execArgvStream({ identity: id, argv: ["true"] }, { signal: controller.signal }),
-    ).rejects.toMatchObject({ name: "AbortError" });
+    ).rejects.toMatchObject({ code: "cancellation" });
   });
 
   it("streams events in started → stdout → stderr → exited order", async () => {

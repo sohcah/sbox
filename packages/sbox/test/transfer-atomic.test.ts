@@ -71,7 +71,7 @@ describe("transfer atomic publication", () => {
         { identity: id, guestPath: "/tree", hostPath: dest },
         { signal: abortAfterChecks(2) },
       ),
-    ).rejects.toMatchObject({ name: "AbortError" });
+    ).rejects.toMatchObject({ code: "cancellation" });
 
     await expect(readFile(dest).catch((error: NodeJS.ErrnoException) => error.code)).resolves.toBe(
       "ENOENT",
@@ -96,7 +96,7 @@ describe("transfer atomic publication", () => {
         { identity: id, guestPath: "/tree", hostPath: dest },
         { overwrite: "replace", signal: abortAfterChecks(2) },
       ),
-    ).rejects.toMatchObject({ name: "AbortError" });
+    ).rejects.toMatchObject({ code: "cancellation" });
 
     expect(await readFile(join(dest, "keep.txt"), "utf8")).toBe("original-bytes");
   });

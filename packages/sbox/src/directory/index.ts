@@ -7,6 +7,12 @@ export { canonicalDirectoriesFingerprint } from "./types.js";
 export { normalizeDirectoryMountConfig, type RequiredDirectoryMount } from "./normalize.js";
 export { assertBindableDirectory } from "./assert-directory.js";
 export {
+  expandHomePrefix,
+  isAbsoluteHostPath,
+  isAbsoluteOrHomeRelativeHostPath,
+  isHomeRelativePath,
+} from "./home-path.js";
+export {
   bindMountsMatchDirectories,
   canonicalBindMountFingerprint,
   decodeBindMounts,

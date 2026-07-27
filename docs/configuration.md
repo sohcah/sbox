@@ -71,7 +71,7 @@ create time (immutable creation; no live refresh or copy-back).
 
 | Field | Default | Notes |
 | --- | --- | --- |
-| `path` | required | Client: relative to project config dir (absolute allowed). Host: absolute on the Host. |
+| `path` | required | Client: relative to project config dir (`~/…` → home; absolute allowed). Host: absolute on the Host, or `~/…` expanded on the Host. |
 | `mount` | required | Absolute guest path; unique across `directories` and `volumes`. |
 | `source` | `client` | `client` or `host`. |
 | `readonly` | `true` | Client sources must stay read-only. |

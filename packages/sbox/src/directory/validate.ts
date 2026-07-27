@@ -4,11 +4,8 @@
 
 import { isAbsoluteGuestPath } from "../config/scalars.js";
 import { SboxError } from "../errors.js";
+import { isAbsoluteOrHomeRelativeHostPath } from "./home-path.js";
 import type { HostDirectoryMount } from "./types.js";
-
-function isAbsoluteHostPath(value: string): boolean {
-  return value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value);
-}
 
 /**
  * Enforce product invariants on every create request (local and remote decode).
@@ -54,10 +51,13 @@ export function assertHostDirectoryMounts(
     }
     seen.add(entry.mount);
 
-    if (entry.source === "host" && !isAbsoluteHostPath(entry.path)) {
-      throw SboxError.validation("Host path must be absolute.", {
-        details: { path: `${prefix}.path` },
-      });
+    if (entry.source === "host" && !isAbsoluteOrHomeRelativeHostPath(entry.path)) {
+      throw SboxError.validation(
+        'Host path must be absolute or home-relative (starting with "~/").',
+        {
+          details: { path: `${prefix}.path` },
+        },
+      );
     }
     if (entry.source === "client" && !entry.readonly) {
       throw SboxError.validation("Client-sourced directory mounts must be read-only.", {

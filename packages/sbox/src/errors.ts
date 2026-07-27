@@ -183,12 +183,10 @@ export function throwIfAborted(signal: AbortSignal | undefined): void {
   if (!signal.aborted) {
     return;
   }
-  const reason = signal.reason;
-  if (isAbortError(reason)) {
-    throw reason;
-  }
-  const error = new DOMException("This operation was aborted.", "AbortError");
-  throw Object.assign(error, reason === undefined ? undefined : { cause: reason });
+  throw SboxError.cancellation(
+    "Operation was cancelled.",
+    signal.reason !== undefined ? { cause: signal.reason } : undefined,
+  );
 }
 
 export function wrapUnknownFailure(
@@ -199,7 +197,7 @@ export function wrapUnknownFailure(
     return error;
   }
   if (isAbortError(error)) {
-    throw error;
+    return SboxError.cancellation("Operation was cancelled.", { cause: error });
   }
   return SboxError.internal(message, { cause: error });
 }

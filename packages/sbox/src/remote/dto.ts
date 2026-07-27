@@ -3,6 +3,7 @@
  */
 
 import { z } from "zod";
+import { isAbsoluteOrHomeRelativeHostPath } from "../directory/home-path.js";
 
 const portableSlug = z
   .string()
@@ -87,11 +88,11 @@ const directoryMountSchema = z
   })
   .superRefine((value, ctx) => {
     if (value.source === "host") {
-      if (!value.path.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(value.path)) {
+      if (!isAbsoluteOrHomeRelativeHostPath(value.path)) {
         ctx.addIssue({
           code: "custom",
           path: ["path"],
-          message: "Host path must be absolute.",
+          message: 'Host path must be absolute or home-relative (starting with "~/").',
         });
       }
     }

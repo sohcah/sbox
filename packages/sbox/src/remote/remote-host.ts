@@ -811,7 +811,7 @@ class RemoteHostImpl implements Host {
     await new Promise<void>((resolve, reject) => {
       const onAbort = (): void => {
         ws.close();
-        reject(new DOMException("This operation was aborted.", "AbortError"));
+        reject(SboxError.cancellation("Operation was cancelled."));
       };
       signal?.addEventListener("abort", onAbort, { once: true });
       ws.once("open", () => {
@@ -882,7 +882,7 @@ class RemoteHostImpl implements Host {
       });
     } catch (error) {
       if (isAbortError(error)) {
-        throw error;
+        throw SboxError.cancellation("Operation was cancelled.", { cause: error });
       }
       safeLog(this.logger, {
         level: "warn",

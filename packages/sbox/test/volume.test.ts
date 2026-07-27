@@ -172,9 +172,9 @@ describe("volume lock", () => {
     child.stdout?.on("data", (chunk: string) => {
       stdout += chunk;
     });
-    const exitCode = await new Promise<number | null>((resolve, reject) => {
+    const exitCode = await new Promise<number | null>((res, reject) => {
       child.once("error", reject);
-      child.once("exit", (code) => resolve(code));
+      child.once("exit", (code) => res(code));
     });
     expect(stdout).toContain("held");
     expect(exitCode).toBe(0);

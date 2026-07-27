@@ -33,6 +33,9 @@ import { hostDockerPlatform } from "../image/platform.js";
 import { normalizePosixRelative } from "../image/context.js";
 import { throwAccumulatedValidation } from "../config/validate.js";
 import { parseBinarySizeToBytes, parseBinarySizeToMiB } from "../config/scalars.js";
+import { normalizeDirectoryMountConfig } from "../directory/normalize.js";
+import { expandHomePrefix, isHomeRelativePath } from "../directory/home-path.js";
+import type { HostDirectoryMount } from "../directory/types.js";
 import {
   mergeNetworkConfigs,
   normalizeAllowRule,
@@ -52,8 +55,7 @@ import {
   validateResolvedRuntimeSecrets,
 } from "../network/validate.js";
 import type { HostVolumeAttachment } from "../volume/types.js";
-import type { HostDirectoryMount } from "../directory/types.js";
-import { normalizeDirectoryMountConfig } from "../directory/normalize.js";
+
 export interface ResolveCreateInput {
   readonly project: ProjectConfig;
   readonly profile?: string;
@@ -224,7 +226,9 @@ function resolveProfileDirectories(
     }
     seenMounts.add(entry.mount);
     const resolvedPath =
-      entry.source === "client" ? resolve(configDirectory, entry.path) : entry.path;
+      entry.source === "client"
+        ? resolveClientDirectoryPath(configDirectory, entry.path)
+        : entry.path;
     let quotaMiB = entry.quotaMiB;
     if (!entry.readonly && entry.quota !== undefined && quotaMiB === undefined) {
       try {
@@ -249,6 +253,14 @@ function resolveProfileDirectories(
     throwAccumulatedValidation(issues, "Sandbox directory mount validation failed.");
   }
   return Object.freeze(out);
+}
+
+/** Client paths: `~/…` → home; otherwise relative to project config directory. */
+function resolveClientDirectoryPath(configDirectory: string, path: string): string {
+  if (isHomeRelativePath(path)) {
+    return expandHomePrefix(path);
+  }
+  return resolve(configDirectory, path);
 }
 
 function mergeProfileNetwork(

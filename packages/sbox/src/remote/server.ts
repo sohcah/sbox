@@ -40,6 +40,7 @@ import {
 } from "../directory/stages.js";
 import { assertBindableDirectory } from "../directory/assert-directory.js";
 import { assertHostDirectoryMounts } from "../directory/validate.js";
+import { expandHomePrefix } from "../directory/home-path.js";
 import {
   SBOX_PROTOCOL_VERSION,
   httpStatusForError,
@@ -233,7 +234,7 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
       for (let i = 0; i < directoriesIn.length; i += 1) {
         const entry = directoriesIn[i]!;
         if (entry.source === "host") {
-          await assertBindableDirectory(entry.path, `directories.${i}.path`);
+          await assertBindableDirectory(expandHomePrefix(entry.path), `directories.${i}.path`);
         }
       }
       let staged = directoriesIn;

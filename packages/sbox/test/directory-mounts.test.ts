@@ -13,8 +13,8 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { tmpdir, homedir } from "node:os";
+import { join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createLocalHostInternal } from "../src/local-host-internal.js";
 import {
@@ -29,6 +29,7 @@ import { directoriesFromLabels } from "../src/directory/labels.js";
 import { isSboxError } from "../src/errors.js";
 import { decodeBindMounts } from "../src/directory/decode-binds.js";
 import { assertHostDirectoryMounts } from "../src/directory/validate.js";
+import { expandHomePrefix } from "../src/directory/home-path.js";
 import { directoryStageRootForIdentity } from "../src/directory/paths.js";
 import { packClientDirectoryArchive } from "../src/directory/stages.js";
 import { FakeHost } from "../src/fake-host.js";
@@ -140,7 +141,11 @@ describe("HostCreateRequest directory invariants", () => {
       assertHostDirectoryMounts([
         { source: "host", path: "relative", mount: "/x", readonly: true },
       ]),
-    ).toThrow(/absolute/i);
+    ).toThrow(/absolute|home-relative/i);
+
+    expect(() =>
+      assertHostDirectoryMounts([{ source: "host", path: "~/cache", mount: "/x", readonly: true }]),
+    ).not.toThrow();
 
     expect(() =>
       assertHostDirectoryMounts([
@@ -296,6 +301,71 @@ describe("directory mounts on LocalHost", () => {
       code: "validation",
       message: expect.stringMatching(/symlink/i),
     });
+    await host[Symbol.asyncDispose]();
+  });
+
+  it("expands ~/ client and host directory paths", async () => {
+    expect(expandHomePrefix("~/cache", "/home/me")).toBe(join("/home/me", "cache"));
+    expect(expandHomePrefix("~", "/home/me")).toBe("/home/me");
+    expect(expandHomePrefix("~user/x", "/home/me")).toBe("~user/x");
+
+    const home = homedir();
+    const underHome = await mkdtemp(join(home, "sbox-dir-home-"));
+    dirs.push(underHome);
+    const vendor = join(underHome, "vendor");
+    const tools = join(underHome, "tools");
+    await mkdir(vendor);
+    await mkdir(tools);
+    const homeRelativeVendor = `~/${relative(home, vendor).replaceAll("\\", "/")}`;
+    const homeRelativeTools = `~/${relative(home, tools).replaceAll("\\", "/")}`;
+
+    const ok = parseYamlProjectInput({
+      version: 1,
+      project: "demo",
+      profiles: {
+        default: {
+          image: "alpine:3.20",
+          directories: [
+            { path: homeRelativeVendor, mount: "/vendor" },
+            {
+              path: homeRelativeTools,
+              source: "host",
+              mount: "/tools",
+              readonly: false,
+              quota: "64MiB",
+            },
+          ],
+        },
+      },
+    });
+    const intent = await resolveCreateIntent({
+      project: ok,
+      external: { configDirectory: underHome, env: {} },
+    });
+    expect(intent.request.directories).toEqual([
+      { source: "client", path: vendor, mount: "/vendor", readonly: true },
+      {
+        source: "host",
+        path: homeRelativeTools,
+        mount: "/tools",
+        readonly: false,
+        quotaMiB: 64,
+      },
+    ]);
+
+    const runtime = new MemoryNativeRuntime();
+    let seenBinds: unknown;
+    const original = runtime.create.bind(runtime);
+    runtime.create = async (request) => {
+      seenBinds = request.bindMounts;
+      return original(request);
+    };
+    const host = createLocalHostInternal({ runtime });
+    await host.create(intent.request);
+    expect(seenBinds).toEqual([
+      { guestPath: "/vendor", hostPath: vendor, readonly: true },
+      { guestPath: "/tools", hostPath: tools, readonly: false, quotaMiB: 64 },
+    ]);
     await host[Symbol.asyncDispose]();
   });
 });

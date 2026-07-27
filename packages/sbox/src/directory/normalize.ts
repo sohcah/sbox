@@ -4,6 +4,7 @@
 
 import { isAbsoluteGuestPath, isBinarySize, parseBinarySizeToMiB } from "../config/scalars.js";
 import type { ConfigurationIssue, DirectoryMountConfig } from "../config/types.js";
+import { isAbsoluteOrHomeRelativeHostPath } from "./home-path.js";
 import type { DirectoryMountSource } from "./types.js";
 
 export function normalizeDirectoryMountConfig(
@@ -29,10 +30,10 @@ export function normalizeDirectoryMountConfig(
     });
   }
   if (source === "host" && typeof raw.path === "string" && raw.path.length > 0) {
-    if (!raw.path.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(raw.path)) {
+    if (!isAbsoluteOrHomeRelativeHostPath(raw.path)) {
       issues.push({
         path: `${pathPrefix}.path`,
-        message: "Host path must be absolute.",
+        message: 'Host path must be absolute or home-relative (starting with "~/").',
       });
     }
   }

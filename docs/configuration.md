@@ -5,7 +5,7 @@
 | Document | Location |
 | --- | --- |
 | Project | `sbox.yaml` (search upward) or `--config` |
-| User | `~/.config/sbox/config.yaml` (platform-specific) or `--user-config` |
+| User | `~/.config/sbox/config.yaml` (or `$XDG_CONFIG_HOME/sbox`; Windows: `%APPDATA%\sbox`) or `--user-config` |
 
 `version: 1` is required. Unknown fields are rejected. Portable slugs identify
 project, profiles, instances, volumes, and targets.

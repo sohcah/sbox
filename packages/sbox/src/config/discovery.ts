@@ -1,8 +1,8 @@
 /**
  * Project and user configuration discovery.
  *
- * Project configs search upward for `sbox.yaml`. User configs use platform
- * paths under an `sbox` application directory.
+ * Project configs search upward for `sbox.yaml`. User configs use XDG on
+ * Unix (`~/.config/sbox`) and `%APPDATA%\sbox` on Windows.
  */
 
 import { access, readFile } from "node:fs/promises";
@@ -77,9 +77,6 @@ function platformUserConfigPath(
   homeDir: string,
   env: Readonly<Record<string, string | undefined>>,
 ): string {
-  if (platform === "darwin") {
-    return join(homeDir, "Library", "Application Support", "sbox", "config.yaml");
-  }
   if (platform === "win32") {
     const appData = env["APPDATA"];
     if (appData === undefined || appData.length === 0) {

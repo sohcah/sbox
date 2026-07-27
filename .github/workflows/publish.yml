@@ -1,0 +1,54 @@
+# Publish @sohcah/sbox and @sohcah/sbox-sandcastle via npm trusted publishing (OIDC).
+# No NPM_TOKEN secret. Configure a Trusted Publisher on each package on npmjs.com
+# for repository sohcah/sbox and workflow filename publish.yml — see docs/publishing.md.
+
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      # Trusted publishing needs npm CLI >= 11.5.1.
+      - name: Ensure recent npm for OIDC
+        run: npm install -g npm@latest
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Verify tag matches package versions
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          sbox_version="$(node -p "require('./packages/sbox/package.json').version")"
+          sc_version="$(node -p "require('./packages/sbox-sandcastle/package.json').version")"
+          if [[ "$sbox_version" != "$tag" || "$sc_version" != "$tag" ]]; then
+            echo "Tag v${tag} does not match package versions (sbox=${sbox_version}, sandcastle=${sc_version})" >&2
+            exit 1
+          fi
+
+      - run: pnpm check
+
+      - name: Publish @sohcah/sbox
+        run: pnpm --filter @sohcah/sbox publish --access public --no-git-checks
+
+      - name: Publish @sohcah/sbox-sandcastle
+        run: pnpm --filter @sohcah/sbox-sandcastle publish --access public --no-git-checks

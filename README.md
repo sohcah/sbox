@@ -172,11 +172,13 @@ Design docs:
 - [`docs/prerequisites.md`](docs/prerequisites.md)
 - [`docs/troubleshooting.md`](docs/troubleshooting.md)
 - [`docs/feature-inventory.md`](docs/feature-inventory.md)
+- [`docs/publishing.md`](docs/publishing.md)
 - [`docs/certification.md`](docs/certification.md)
 
 Samples: [`samples/local`](samples/local), [`samples/remote`](samples/remote).
 
-Publish dry run: `pnpm publish:dry-run`.
+Publish dry run: `pnpm publish:dry-run`. Releases: tag `v*` → GitHub Actions
+trusted publishing (see [`docs/publishing.md`](docs/publishing.md)).
 
 The Microsandbox TypeScript 7 declaration patch and the private PTY agent
 adapter are documented under [`patches/README.md`](patches/README.md).

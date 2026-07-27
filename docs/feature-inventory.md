@@ -30,7 +30,7 @@ a **bounded helper** in `sbox`, or a **deliberate exclusion** (`docs/non-goals.m
 | Sandcastle isolated provider | Helper | Peer Sandcastle; uses stable API |
 | Doctor | Helper | Read-only probes |
 | SQLite / catalog / claims / prune / sync / telemetry | Exclusion | See non-goals |
-| Arbitrary SDK pass-through / binds | Exclusion | Curated model only |
+| Arbitrary SDK pass-through | Exclusion | Curated model only |
 | Built-in TLS | Exclusion | Operator proxy |
 | Cross-process image locks | Exclusion | In-process coalesce only |
 | Detached process supervision | Exclusion | Session-owned only |

@@ -172,6 +172,7 @@ Design docs:
 - [`docs/prerequisites.md`](docs/prerequisites.md)
 - [`docs/troubleshooting.md`](docs/troubleshooting.md)
 - [`docs/feature-inventory.md`](docs/feature-inventory.md)
+- [`docs/host-directory-mounts-plan.md`](docs/host-directory-mounts-plan.md)
 - [`docs/publishing.md`](docs/publishing.md)
 - [`docs/certification.md`](docs/certification.md)
 

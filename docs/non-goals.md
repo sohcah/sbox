@@ -64,8 +64,7 @@ Profiles intentionally omit:
 - rlimits, metrics tuning, and selectable security profiles;
 - advanced registry, TLS interception, secret injection, DNS/NIC, or complete
   network-policy knobs;
-- native detached/ephemeral flags as user configuration;
-- arbitrary host bind mounts and raw disk paths.
+- native detached/ephemeral flags as user configuration.
 
 Capabilities are added to the curated model only for demonstrated workflows.
 The native SDK handle is never exposed publicly.

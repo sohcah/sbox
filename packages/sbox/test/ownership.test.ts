@@ -91,6 +91,33 @@ describe("ownership labels", () => {
       matchOwnedCreation(
         {
           labels,
+          image: "alpine:3.20",
+          cpus: 1,
+          memoryMiB: 512,
+          workdir: null,
+          user: null,
+          shell: null,
+          hostname: null,
+          maxDurationSecs: null,
+          idleTimeoutSecs: null,
+          env: {
+            PATH: "/usr/bin",
+            DEBIAN_FRONTEND: "noninteractive",
+          },
+          network: defaultNetworkConfig(),
+          secrets: [],
+          volumes: [],
+          mounts: [],
+          bindMounts: [],
+        },
+        identity,
+        creation,
+      ).ok,
+    ).toBe(true);
+    expect(
+      matchOwnedCreation(
+        {
+          labels,
           image: "wrong:latest",
           cpus: 1,
           memoryMiB: 512,
@@ -109,6 +136,13 @@ describe("ownership labels", () => {
         },
         identity,
         creation,
+      ).ok,
+    ).toBe(false);
+    expect(
+      matchOwnershipLabels(
+        buildOwnershipLabels(identity, creation),
+        identity,
+        projectCreateRequest({ image: "alpine:3.20", env: { A: "1" } }),
       ).ok,
     ).toBe(false);
   });

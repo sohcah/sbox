@@ -199,7 +199,7 @@ describe("immutable creation projection", () => {
     expect(immutableCreationEquals(left, right)).toBe(true);
   });
 
-  it("matches decoded native records while allowing documented SDK PATH injection", () => {
+  it("matches decoded native records while allowing image/SDK env extras", () => {
     const requested = projectCreateRequest({
       image: "alpine:3.20",
       env: { A: "1" },
@@ -216,7 +216,12 @@ describe("immutable creation projection", () => {
           hostname: null,
           maxDurationSecs: null,
           idleTimeoutSecs: null,
-          env: { A: "1", PATH: "/usr/bin" },
+          env: {
+            A: "1",
+            PATH: "/usr/bin",
+            DEBIAN_FRONTEND: "noninteractive",
+            DEV_SOHCAH_SBOX_MANAGED: "true",
+          },
           network: defaultNetworkConfig(),
           secrets: [],
           volumes: [],
@@ -238,7 +243,7 @@ describe("immutable creation projection", () => {
           hostname: null,
           maxDurationSecs: null,
           idleTimeoutSecs: null,
-          env: { A: "1", EXTRA: "nope" },
+          env: { A: "2", PATH: "/usr/bin" },
           network: defaultNetworkConfig(),
           secrets: [],
           volumes: [],

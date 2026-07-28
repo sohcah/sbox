@@ -1,9 +1,12 @@
 /**
  * Internal ownership adoption: fingerprint labels and native config matching.
  *
- * Not part of the public package declaration graph. Environment values are
- * compared against decoded native configuration here, but are excluded from the
+ * Not part of the public package declaration graph. Environment *values* are
+ * compared against decoded native configuration here and are excluded from the
  * persisted fingerprint label (which is publicly visible on inspection).
+ * Environment *keys* are included in the fingerprint so key-set drift conflicts
+ * without exposing values. Native decode merges image/SDK ENV into the record,
+ * so value comparison only requires requested keys to match (extras allowed).
  */
 
 import { createHash } from "node:crypto";
@@ -43,12 +46,6 @@ export interface SandboxImmutableCreation {
   readonly volumes: readonly VolumeAttachmentSpec[];
   readonly mounts: readonly MountAttachmentSpec[];
 }
-
-/**
- * Environment keys the pinned SDK may inject that are not part of the request.
- * Compared narrowly: requested keys must still match exactly when present.
- */
-const SDK_INJECTED_ENV_KEYS = new Set(["PATH"]);
 
 export function buildOwnershipLabels(
   identity: SandboxIdentity,
@@ -138,7 +135,8 @@ export function matchOwnedCreation(
 /**
  * Compare the requested immutable projection against a decoded native record.
  * Fingerprint labels are additional evidence and do not replace this check.
- * Environment is authoritative here and is not part of the persisted fingerprint.
+ * Environment values are authoritative here; keys are in the fingerprint.
+ * Native records include image/SDK ENV, so only requested keys are compared.
  */
 export function nativeRecordMatchesCreation(
   record: {
@@ -214,10 +212,14 @@ export function nativeRecordMatchesCreation(
   if (!bindMountsMatchHostMounts(record.bindMounts, requested.mounts)) {
     return false;
   }
-  return envMatchesAllowingSdkInjected(requested.env, record.env);
+  return envValuesMatchRequested(requested.env, record.env);
 }
 
-function envMatchesAllowingSdkInjected(
+/**
+ * Requested keys must be present with identical values. Extra native keys
+ * (image ENV, SDK PATH, ownership markers) are ignored.
+ */
+function envValuesMatchRequested(
   requested: Readonly<Record<string, string>>,
   native: Readonly<Record<string, string>>,
 ): boolean {
@@ -226,21 +228,13 @@ function envMatchesAllowingSdkInjected(
       return false;
     }
   }
-  for (const key of Object.keys(native)) {
-    if (Object.prototype.hasOwnProperty.call(requested, key)) {
-      continue;
-    }
-    if (SDK_INJECTED_ENV_KEYS.has(key)) {
-      continue;
-    }
-    return false;
-  }
   return true;
 }
 
 /**
  * Stable fingerprint of non-secret immutable creation fields.
- * Environment and secret values are intentionally excluded.
+ * Environment values and secret values are intentionally excluded; env key
+ * names are included so differing key sets conflict without leaking values.
  */
 function creationFingerprint(projection: SandboxImmutableCreation): string {
   const canonical = JSON.stringify({
@@ -251,6 +245,7 @@ function creationFingerprint(projection: SandboxImmutableCreation): string {
     user: projection.user,
     shell: projection.shell,
     hostname: projection.hostname,
+    envKeys: Object.keys(projection.env).toSorted(),
     maxDurationSecs: projection.maxDurationSecs,
     idleTimeoutSecs: projection.idleTimeoutSecs,
     network: canonicalNetworkFingerprint(projection.network),

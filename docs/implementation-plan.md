@@ -74,8 +74,9 @@ locally with no YAML, Docker, QCOW2 helper, HTTP, or product database.
   `image.Oci.reference` / `resources.*` / `runtime.*` / `env[{key,value}]`
   shape returned by `Sandbox.builder(...).build()`.
 - Immutable creation matching uses a reserved
-  `dev.sohcah.sbox/creation` fingerprint so SDK-injected environment
-  values (such as `PATH`) cannot cause false ownership conflicts.
+  `dev.sohcah.sbox/creation` fingerprint (including env *keys*, not values)
+  so image/SDK-injected environment extras cannot cause false ownership
+  conflicts while differing key sets still conflict.
 - Stopping a running sandbox acquires a live SDK object, then
   stop → detach/consume → fresh `get` before inspect/restart/remove.
 - Ordinary unit checks use `FakeHost` and `LocalHost` over an in-memory native

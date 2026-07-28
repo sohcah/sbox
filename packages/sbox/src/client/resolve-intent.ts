@@ -614,9 +614,11 @@ export function reportCreationDrift(
     return true;
   });
 
-  const expectedFingerprint = buildOwnershipLabels(identity, expectedVisible)[
-    OWNERSHIP_LABEL_KEYS.creation
-  ];
+  // Env values stay off the inspection surface; fingerprint still needs key names.
+  const expectedFingerprint = buildOwnershipLabels(identity, {
+    ...expected,
+    mounts: expectedMounts,
+  })[OWNERSHIP_LABEL_KEYS.creation];
   const actualFingerprint = inspection.labels[OWNERSHIP_LABEL_KEYS.creation];
   if (expectedFingerprint !== actualFingerprint && fields.length === 0) {
     throw SboxError.ownershipConflict(

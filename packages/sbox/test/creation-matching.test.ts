@@ -33,7 +33,39 @@ describe("uncertain-create immutable matching", () => {
     runtime.seed({
       name,
       status: "running",
-      labels: matchingLabels(),
+      labels: matchingLabels({ env: { TOKEN: "other-value" } }),
+      image: "alpine:3.20",
+      cpus: 1,
+      memoryMiB: 512,
+      workdir: null,
+      user: null,
+      shell: null,
+      hostname: null,
+      maxDurationSecs: null,
+      idleTimeoutSecs: null,
+      env: { TOKEN: "secret-value" },
+    });
+    const host = createLocalHostInternal({ runtime });
+    const error = await host
+      .create(baseRequest({ env: { TOKEN: "other-value" } }))
+      .catch((value: unknown) => value);
+    expect(isSboxError(error)).toBe(true);
+    if (isSboxError(error)) {
+      expect(error.code).toBe("ownership_conflict");
+      expect(JSON.stringify(error)).not.toContain("secret-value");
+      expect(error.toSafeJSON().details).not.toEqual(
+        expect.objectContaining({ env: expect.anything() }),
+      );
+    }
+  });
+
+  it("rejects when environment key sets differ via creation fingerprint", async () => {
+    const runtime = new MemoryNativeRuntime();
+    const name = nativeSandboxName(identity.project, identity.instance);
+    runtime.seed({
+      name,
+      status: "stopped",
+      labels: matchingLabels({ env: { TOKEN: "secret-value" } }),
       image: "alpine:3.20",
       cpus: 1,
       memoryMiB: 512,
@@ -51,9 +83,6 @@ describe("uncertain-create immutable matching", () => {
     if (isSboxError(error)) {
       expect(error.code).toBe("ownership_conflict");
       expect(JSON.stringify(error)).not.toContain("secret-value");
-      expect(error.toSafeJSON().details).not.toEqual(
-        expect.objectContaining({ env: expect.anything() }),
-      );
     }
   });
 

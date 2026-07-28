@@ -1,6 +1,6 @@
 {
   "name": "@sohcah/sbox-sandcastle",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Sandcastle adapter for @sohcah/sbox",
   "keywords": [
     "microsandbox",

@@ -12,7 +12,7 @@ export {
 } from "@sohcah/sbox";
 
 export const PACKAGE_NAME = "@sohcah/sbox-sandcastle" as const;
-export const PACKAGE_VERSION = "0.2.3" as const;
+export const PACKAGE_VERSION = "0.2.4" as const;
 
 export { createSboxSandcastleProvider, type SboxSandcastleOptions } from "./provider.js";
 

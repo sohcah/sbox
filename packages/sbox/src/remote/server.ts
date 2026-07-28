@@ -42,6 +42,7 @@ import { assertBindablePath } from "../directory/assert-directory.js";
 import { assertHostMounts } from "../directory/validate.js";
 import { expandHomePrefix } from "../directory/home-path.js";
 import type { HostMount } from "../directory/types.js";
+import { requireDockerPlatform } from "../image/platform.js";
 import {
   SBOX_PROTOCOL_VERSION,
   httpStatusForError,
@@ -396,11 +397,15 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
               "cache-control": "no-store",
             });
           }
+          const platform = requireDockerPlatform(
+            await options.host.capabilities({ signal }),
+          );
           const inspection = await options.host.ensureImage(
             {
               contextRoot,
               dockerfile: meta.dockerfile,
-              platform: meta.platform,
+              // Host-advertised platform wins over Client-supplied meta.platform.
+              platform,
               args: meta.args,
               secrets: meta.secrets,
               includeGit: meta.includeGit,

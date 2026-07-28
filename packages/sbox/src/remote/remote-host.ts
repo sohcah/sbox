@@ -44,6 +44,7 @@ import type {
   SandboxInspection,
   SandboxSummary,
 } from "../types.js";
+import { requireDockerPlatform } from "../image/platform.js";
 import type {
   HostEnsureVolumeRequest,
   HostListVolumesRequest,
@@ -192,13 +193,17 @@ class RemoteHostImpl implements Host {
     options?: HostEnsureImageOptions,
   ): Promise<HostImageInspection> {
     throwIfAborted(options?.signal);
+    const caps = await this.capabilities(
+      options?.signal !== undefined ? { signal: options.signal } : undefined,
+    );
+    const platform = requireDockerPlatform(caps);
     const archive = await packHostPath(
       request.contextRoot,
       options?.signal !== undefined ? { signal: options.signal } : {},
     );
     const meta = {
       dockerfile: request.dockerfile,
-      platform: request.platform,
+      platform,
       args: request.args,
       secrets: request.secrets,
       includeGit: request.includeGit,

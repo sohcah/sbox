@@ -218,7 +218,9 @@ not use durable or cross-process build locks. Failed builds leave no workflow
 record. `doctor` reports marked stale workspaces; cleanup is explicit and exact.
 
 Referenced OCI images stay in Microsandbox's pull/materialization path. Docker
-is required only for build-backed profiles. Builds target the host architecture
+is required only for build-backed profiles. Builds target the **Host** architecture (the machine running Docker /
+Microsandbox), not the Client's. Remote Clients must use Host-advertised
+`dockerPlatform` from capabilities when predicting image identity.
 only.
 
 ## QCOW2 volumes

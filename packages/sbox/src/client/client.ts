@@ -32,6 +32,7 @@ import { resolveInstanceId, selectProfile } from "../config/profile.js";
 import type { SandboxHandle } from "./handle.js";
 import { HostSandboxHandle } from "./handle-impl.js";
 import { computeGeneratedImageIdentity } from "../image/compute.js";
+import { requireDockerPlatform } from "../image/platform.js";
 import {
   reportCreationDrift,
   resolveCreateIntent,
@@ -534,10 +535,17 @@ class HostSboxClient implements SboxClient {
     let resolvedImage: string | undefined;
     const needsImageEnsure = isBuildProfile(selected.profile);
     if (needsImageEnsure) {
+      const host = await this.hostFor(options);
+      const platform = requireDockerPlatform(
+        await host.capabilities(
+          options.signal !== undefined ? { signal: options.signal } : undefined,
+        ),
+      );
       const predicted = await resolveImageIdentityInputs({
         project: this.project,
         ...(options.profile !== undefined ? { profile: options.profile } : {}),
         external: this.externalContext(options),
+        platform,
       });
       const identity = await computeGeneratedImageIdentity({
         ...predicted.inputs,
@@ -561,10 +569,16 @@ class HostSboxClient implements SboxClient {
 
   private async ensureProfileImage(options: ClientBuildOptions): Promise<HostImageInspection> {
     const host = await this.hostFor(options);
+    const platform = requireDockerPlatform(
+      await host.capabilities(
+        options.signal !== undefined ? { signal: options.signal } : undefined,
+      ),
+    );
     const resolved = await resolveEnsureImageRequest({
       project: this.project,
       ...(options.profile !== undefined ? { profile: options.profile } : {}),
       external: this.externalContext(options),
+      platform,
       ...(options.force === true ? { force: true } : {}),
     });
     return host.ensureImage(resolved.request, {

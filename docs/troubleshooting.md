@@ -24,8 +24,9 @@ reserved labels on foreign resources are ownership conflicts—do not adopt.
 ## Images
 
 Dockerfile profiles need Docker. Content identity changes when context, build
-args, or Dockerfile change. Conflicting unowned images at a generated reference
-fail closed.
+args, Dockerfile, or Host `dockerPlatform` change. Conflicting unowned images at
+a generated reference fail closed. Remote Clients must rebuild after upgrading a
+Host that previously built with the wrong platform (Client arch leak).
 
 ## Volumes
 
@@ -39,6 +40,8 @@ the other maintenance/create session. Never manually edit QCOW2 files under
 - Protocol mismatch: upgrade client and server together (no parallel protocols
   in pre-1)
 - Transfer/archive limits: raise server bounds or shrink payloads
+- Dockerfile builds use the Host's Docker platform, not the Client's CPU arch
+  (e.g. Mac arm64 Client → Windows amd64 Host builds `linux/amd64`)
 
 ## Processes
 

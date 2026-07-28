@@ -99,8 +99,9 @@ input. Missing exact images are built through Docker, exported, and loaded
 directly into Microsandbox without a registry. `build --force` is explicit;
 ordinary `up` reuses an exact image. Build failures leave no durable workflow.
 
-Docker is required only for build-backed profiles. Cross-architecture builds,
-Podman abstraction, an `sbox` layer cache, automatic image pruning, and private
+Docker is required only for build-backed profiles. Builds always use the Host
+machine's architecture (`dockerPlatform` from Host capabilities). Cross-architecture
+builds, Podman abstraction, an `sbox` layer cache, automatic image pruning, and private
 registry configuration are not part of `0.1`.
 
 ### Use managed QCOW2 storage

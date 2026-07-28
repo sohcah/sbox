@@ -539,6 +539,48 @@ describe("ensureImage via FakeHost", () => {
     expect(formatNativeImageReference("a".repeat(64))).toContain("sbox-img:sha256-");
   });
 
+  it("client image ensure uses Host capabilities dockerPlatform, not Client arch defaults", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sbox-host-plat-"));
+    await writeFile(join(root, "Dockerfile"), "FROM alpine:3.20\n");
+    const project = await dockerfileProject(root);
+    const localPlatform = hostDockerPlatform();
+    const otherPlatform = localPlatform === "linux/amd64" ? "linux/arm64" : "linux/amd64";
+
+    const localHost = new FakeHost({ dockerPlatform: localPlatform });
+    const otherHost = new FakeHost({ dockerPlatform: otherPlatform });
+    const localClient = createSboxClient({
+      project,
+      host: localHost,
+      ownsHost: false,
+      configDirectory: root,
+    });
+    const otherClient = createSboxClient({
+      project,
+      host: otherHost,
+      ownsHost: false,
+      configDirectory: root,
+    });
+
+    const localImage = await localClient.build({ profile: "built" });
+    const otherImage = await otherClient.build({ profile: "built" });
+    expect(localImage.reference).not.toBe(otherImage.reference);
+    expect(localHost.operations).toContain("capabilities");
+    expect(otherHost.operations).toContain("capabilities");
+
+    await localClient[Symbol.asyncDispose]();
+    await otherClient[Symbol.asyncDispose]();
+  });
+
+  it("LocalHost-style ensureImage ignores caller-supplied platform", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sbox-plat-override-"));
+    await writeFile(join(root, "Dockerfile"), "FROM alpine:3.20\n");
+    const host = new FakeHost({ dockerPlatform: "linux/amd64" });
+    const base = await ensureRequest(root);
+    const wrong = await host.ensureImage({ ...base, platform: "linux/arm64" });
+    const right = await host.ensureImage({ ...base, platform: "linux/amd64" });
+    expect(wrong.reference).toBe(right.reference);
+  });
+
   it("isolates throwing progress subscribers during coalesced builds", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-progress-throw-"));
     await writeFile(join(root, "Dockerfile"), "FROM alpine:3.20\n");

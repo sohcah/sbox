@@ -17,6 +17,7 @@ import {
   type SandboxIdentity,
 } from "./identity.js";
 import { ensureImage } from "./image/ensure.js";
+import { hostDockerPlatform } from "./image/platform.js";
 import {
   formatImageContentDigest,
   IMAGE_IDENTITY_ALGORITHM_VERSION,
@@ -420,6 +421,7 @@ class LocalHost implements Host {
         dynamicHostPorts: false,
         // qemu-img is probed only when volume operations run (requireQemuImg).
         qemuImg: false,
+        dockerPlatform: hostDockerPlatform(),
         notes: [
           ...probe.notes,
           "Dynamic host ports are not advertised: allocated ports are not inspectable on Microsandbox 0.6.6.",
@@ -702,7 +704,14 @@ class LocalHost implements Host {
     options?: HostEnsureImageOptions,
   ): Promise<HostImageInspection> {
     return this.withOperation("ensureImage", undefined, options, async () =>
-      ensureImage(request, options ?? {}),
+      ensureImage(
+        {
+          ...request,
+          // Host machine decides Docker platform; ignore Client-supplied value.
+          platform: hostDockerPlatform(),
+        },
+        options ?? {},
+      ),
     );
   }
 

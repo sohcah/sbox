@@ -134,6 +134,7 @@ describe("declaration leak guard", () => {
     expect(combined).not.toMatch(/\binspectImageOwnershipLabels\b/);
     expect(combined).not.toMatch(/\bbuildImageOwnershipLabels\b/);
     expect(combined).not.toMatch(/\bhostDockerPlatform\b/);
+    expect(combined).not.toMatch(/\brequireDockerPlatform\b/);
     expect(combined).not.toMatch(/\bdiscoverBuildContext\b/);
     expect(combined).not.toMatch(/\bmaterializeContextEntries\b/);
     expect(combined).not.toMatch(/\bformatNativeImageReference\b/);

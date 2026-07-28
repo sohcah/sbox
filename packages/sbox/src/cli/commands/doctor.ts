@@ -244,7 +244,7 @@ export async function runDoctor(ctx: CliContext, ports: DoctorProbePorts = {}): 
         name: "remote-handshake",
         ok: true,
         required: true,
-        detail: `protocol ${SBOX_PROTOCOL_VERSION}; localMicrosandbox=${caps.localMicrosandbox}; qemuImg=${caps.qemuImg}`,
+        detail: `protocol ${SBOX_PROTOCOL_VERSION}; localMicrosandbox=${caps.localMicrosandbox}; qemuImg=${caps.qemuImg}; dockerPlatform=${caps.dockerPlatform}`,
       });
       checks.push({
         name: "target-mode",
@@ -259,7 +259,7 @@ export async function runDoctor(ctx: CliContext, ports: DoctorProbePorts = {}): 
         name: "local-host",
         ok: true,
         required: true,
-        detail: `localMicrosandbox=${caps.localMicrosandbox}; dynamicHostPorts=${caps.dynamicHostPorts}`,
+        detail: `localMicrosandbox=${caps.localMicrosandbox}; dynamicHostPorts=${caps.dynamicHostPorts}; dockerPlatform=${caps.dockerPlatform}`,
       });
       checks.push({
         name: "microsandbox",

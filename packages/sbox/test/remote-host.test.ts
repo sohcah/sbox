@@ -161,6 +161,7 @@ describe("remote host contract", () => {
               localMicrosandbox: false,
               dynamicHostPorts: true,
               qemuImg: false,
+              dockerPlatform: "linux/amd64",
               notes: [],
             },
           }),

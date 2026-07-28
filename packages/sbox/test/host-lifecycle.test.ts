@@ -107,6 +107,8 @@ describe.each(hostFactories())("Host lifecycle contract ($name)", ({ create }) =
     const { host } = create();
     const caps = await host.capabilities();
     expect(typeof caps.localMicrosandbox).toBe("boolean");
+    expect(typeof caps.dockerPlatform).toBe("string");
+    expect(caps.dockerPlatform.length).toBeGreaterThan(0);
     expect(Array.isArray(caps.notes)).toBe(true);
     expect(await host.list()).toEqual([]);
   });

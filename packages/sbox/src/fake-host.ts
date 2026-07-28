@@ -64,6 +64,7 @@ import type {
   PtySession,
 } from "./process/session.js";
 import type { HostCopyOptions } from "./transfer/types.js";
+import { hostDockerPlatform } from "./image/platform.js";
 import type {
   HostCapabilities,
   HostCreateRequest,
@@ -92,6 +93,8 @@ export interface FakeHostOptions {
   readonly logger?: Logger;
   /** Optional clock for deterministic timestamps in tests. */
   readonly now?: () => Date;
+  /** Override advertised Docker platform (defaults to this process arch). */
+  readonly dockerPlatform?: string;
 }
 
 interface StoredSandbox {
@@ -133,10 +136,12 @@ export class FakeHost implements Host {
   execHandler = defaultFakeExec;
   /** When false, create rejects omitted/0 host ports with capability. */
   dynamicHostPorts = true;
+  private readonly dockerPlatform: string;
 
   constructor(options: FakeHostOptions = {}) {
     this.logger = createRedactingLogger(options.logger ?? silentLogger);
     this.now = options.now ?? (() => new Date());
+    this.dockerPlatform = options.dockerPlatform ?? hostDockerPlatform();
   }
 
   async create(request: HostCreateRequest, options?: OperationOptions): Promise<SandboxInspection> {
@@ -278,6 +283,7 @@ export class FakeHost implements Host {
       localMicrosandbox: false,
       dynamicHostPorts: this.dynamicHostPorts,
       qemuImg: true,
+      dockerPlatform: this.dockerPlatform,
       notes: ["FakeHost models the Host contract in memory."],
     }));
   }
@@ -453,7 +459,14 @@ export class FakeHost implements Host {
           });
         },
       };
-      return ensureImage(request, options ?? {}, ports);
+      return ensureImage(
+        {
+          ...request,
+          platform: this.dockerPlatform,
+        },
+        options ?? {},
+        ports,
+      );
     });
   }
 

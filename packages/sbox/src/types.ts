@@ -79,6 +79,11 @@ export interface HostCapabilities {
   readonly dynamicHostPorts: boolean;
   /** When true, host `qemu-img` is available for managed volumes. */
   readonly qemuImg: boolean;
+  /**
+   * Docker `--platform` for Dockerfile builds on this Host (e.g. `linux/amd64`).
+   * Authoritative for image identity; Clients must not infer from their own arch.
+   */
+  readonly dockerPlatform: string;
   readonly notes: readonly string[];
 }
 

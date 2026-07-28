@@ -108,6 +108,47 @@ describe("BoundedAsyncQueue", () => {
 });
 
 describe("SdkProcessSession cleanup and backpressure", () => {
+  it("recovers exit via wait() when recv ends without exited", async () => {
+    let killCount = 0;
+    let disposeCount = 0;
+    let recvCount = 0;
+    const handle: SdkNativeProcessHandle & { killCount: number; disposeCount: number } = {
+      get killCount() {
+        return killCount;
+      },
+      get disposeCount() {
+        return disposeCount;
+      },
+      recv: async () => {
+        recvCount += 1;
+        if (recvCount === 1) {
+          return { kind: "started", pid: 1 };
+        }
+        if (recvCount === 2) {
+          return { kind: "stdout", data: utf8ToBytes("/tmp/sandcastle-abc\n") };
+        }
+        return undefined;
+      },
+      takeStdin: async () => null,
+      wait: async () => ({ code: 0 }),
+      signal: async () => undefined,
+      kill: async () => {
+        killCount += 1;
+      },
+      [Symbol.asyncDispose]: async () => {
+        disposeCount += 1;
+      },
+    };
+    const session = createSdkProcessSession(handle);
+    const events: string[] = [];
+    for await (const event of session) {
+      events.push(event.type);
+    }
+    await expect(session.wait()).resolves.toEqual({ exitCode: 0, signal: null });
+    expect(events).toEqual(["started", "stdout", "exited"]);
+    await session[Symbol.asyncDispose]();
+  });
+
   it("treats undefined recv as end-of-stream (NAPI Option::None quirk)", async () => {
     let killCount = 0;
     let disposeCount = 0;

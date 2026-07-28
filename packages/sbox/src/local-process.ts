@@ -20,9 +20,7 @@ import {
   observeDetached,
 } from "./process/async-input.js";
 import { BoundedAsyncQueue, DEFAULT_STREAM_QUEUE_CAPACITY } from "./process/bounded-queue.js";
-import { collectProcessEvents } from "./process/collect.js";
-import { utf8ToBytes } from "./process/decode.js";
-import { assertTimeoutMs } from "./process/limits.js";
+import { assertTimeoutMs, resolveOutputLimits } from "./process/limits.js";
 import type {
   HostCollectedExecOptions,
   HostStreamingExecOptions,
@@ -64,31 +62,73 @@ export async function execArgvCollected(
 ): Promise<ProcessResult> {
   validateArgv(argv);
   throwIfAborted(options.signal);
+  const limits = resolveOutputLimits(options);
+  const timeoutMs = assertTimeoutMs(options.timeoutMs);
   return withConnectedSandbox(nativeName, async (sandbox) => {
-    const streamOptions: HostStreamingExecOptions = {
-      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
-      ...(options.env !== undefined ? { env: options.env } : {}),
-      ...(options.user !== undefined ? { user: options.user } : {}),
-      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
-      ...(options.signal !== undefined ? { signal: options.signal } : {}),
-      ...(options.stdin !== undefined
-        ? {
-            stdin: (async function* () {
-              yield typeof options.stdin === "string" ? utf8ToBytes(options.stdin) : options.stdin!;
-            })(),
-          }
-        : {}),
-    };
-    const session = await startSdkProcessSession(sandbox, argv, streamOptions);
+    const [cmd, ...args] = argv;
+    // Prefer execWith over streaming recv(): microsandbox's JS ExecHandle.recv
+    // can surface undefined EOS (NAPI Option::None) and drop the exited event.
+    const run = sandbox.execWith(cmd!, (builder) => {
+      let next = builder.args([...args]);
+      if (options.cwd !== undefined) {
+        next = next.cwd(options.cwd);
+      }
+      if (options.user !== undefined) {
+        next = next.user(options.user);
+      }
+      if (options.env !== undefined && Object.keys(options.env).length > 0) {
+        next = next.envs({ ...options.env });
+      }
+      if (timeoutMs !== undefined) {
+        next = next.timeout(timeoutMs);
+      }
+      if (options.stdin !== undefined) {
+        const bytes =
+          typeof options.stdin === "string"
+            ? Buffer.from(options.stdin, "utf8")
+            : Buffer.from(options.stdin.buffer, options.stdin.byteOffset, options.stdin.byteLength);
+        next = next.stdinBytes(bytes);
+      } else {
+        next = next.stdinNull();
+      }
+      return next;
+    });
+
+    let output;
     try {
-      return await collectProcessEvents(session, {
-        ...(options.stdoutMaxBytes !== undefined ? { stdoutMaxBytes: options.stdoutMaxBytes } : {}),
-        ...(options.stderrMaxBytes !== undefined ? { stderrMaxBytes: options.stderrMaxBytes } : {}),
-        onOverflow: () => session.cancel("output-limit"),
-      });
-    } finally {
-      await session[Symbol.asyncDispose]();
+      output = await raceWithAbort(run, options.signal);
+    } catch (error) {
+      throw mapNativeError(error);
     }
+
+    const stdout = output.stdoutBytes();
+    const stderr = output.stderrBytes();
+    if (stdout.byteLength > limits.stdoutMaxBytes) {
+      throw SboxError.outputLimit("Collected stdout exceeded the configured limit.", {
+        details: {
+          stream: "stdout",
+          limitBytes: limits.stdoutMaxBytes,
+          receivedBytes: stdout.byteLength,
+        },
+      });
+    }
+    if (stderr.byteLength > limits.stderrMaxBytes) {
+      throw SboxError.outputLimit("Collected stderr exceeded the configured limit.", {
+        details: {
+          stream: "stderr",
+          limitBytes: limits.stderrMaxBytes,
+          receivedBytes: stderr.byteLength,
+        },
+      });
+    }
+    return {
+      stdout,
+      stderr,
+      exitCode: output.code,
+      signal: null,
+      timedOut: false,
+      cancelled: false,
+    };
   });
 }
 
@@ -181,9 +221,61 @@ async function startSdkProcessSession(
     throw mapNativeError(error);
   }
 
-  return createSdkProcessSession(handle, {
+  return createSdkProcessSession(adaptExecHandle(handle), {
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
     ...(options.stdin !== undefined ? { stdin: options.stdin } : {}),
+  });
+}
+
+/** Bridge microsandbox ExecHandle to the session seam (incl. wait fallback). */
+function adaptExecHandle(handle: {
+  recv(): Promise<
+    | { kind: "started"; pid: number }
+    | { kind: "stdout"; data: Uint8Array }
+    | { kind: "stderr"; data: Uint8Array }
+    | { kind: "exited"; code: number }
+    | null
+    | undefined
+  >;
+  takeStdin(): Promise<{
+    write(data: Uint8Array | string): Promise<void>;
+    close(): Promise<void>;
+  } | null>;
+  wait(): Promise<{ code: number }>;
+  signal(signal: number): Promise<void>;
+  kill(): Promise<void>;
+  [Symbol.asyncDispose](): Promise<void>;
+}): SdkNativeProcessHandle {
+  return {
+    recv: () => handle.recv(),
+    takeStdin: () => handle.takeStdin(),
+    wait: () => handle.wait(),
+    signal: (signal) => handle.signal(signal),
+    kill: () => handle.kill(),
+    [Symbol.asyncDispose]: () => handle[Symbol.asyncDispose](),
+  };
+}
+
+async function raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (signal === undefined) {
+    return promise;
+  }
+  throwIfAborted(signal);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(SboxError.cancellation("Process was aborted."));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
   });
 }
 
@@ -222,6 +314,11 @@ export interface SdkNativeProcessHandle {
     write(data: Uint8Array | string): Promise<void>;
     close(): Promise<void>;
   } | null>;
+  /**
+   * Fallback when the event stream ends without an `exited` event (known
+   * microsandbox recv/EOS quirk). Optional for narrow test doubles.
+   */
+  wait?(): Promise<{ code: number }>;
   signal(signal: number): Promise<void>;
   kill(): Promise<void>;
   [Symbol.asyncDispose](): Promise<void>;
@@ -447,7 +544,10 @@ class SdkProcessSession implements ProcessSession {
       }
       if (!this.settled) {
         if (this.exitCode === null && this.failure === null) {
-          this.failure = SboxError.internal("Process stream ended without exit.");
+          const recovered = await this.tryRecoverExitFromWait();
+          if (!recovered) {
+            this.failure = SboxError.internal("Process stream ended without exit.");
+          }
         }
         await this.finish();
       }
@@ -462,6 +562,21 @@ class SdkProcessSession implements ProcessSession {
         }
         await this.finish();
       }
+    }
+  }
+
+  private async tryRecoverExitFromWait(): Promise<boolean> {
+    if (this.handle.wait === undefined) {
+      return false;
+    }
+    try {
+      const status = await this.handle.wait();
+      this.exitCode = status.code;
+      this.exitSignal = null;
+      await this.pushEvent({ type: "exited", exitCode: status.code, signal: null });
+      return true;
+    } catch {
+      return false;
     }
   }
 

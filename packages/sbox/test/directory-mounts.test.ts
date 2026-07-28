@@ -328,7 +328,7 @@ describe("Host mounts on LocalHost", () => {
     await host[Symbol.asyncDispose]();
   });
 
-  it("rejects symlink directory and file roots", async () => {
+  it.skipIf(process.platform === "win32")("rejects symlink directory and file roots", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-dir-sym-"));
     dirs.push(root);
     const real = join(root, "real");
@@ -613,7 +613,7 @@ describe("Host mounts over RemoteHost", () => {
     ).toThrow(/followEscapingSymlinks/i);
   });
 
-  it("rejects symlink client roots before packing", async () => {
+  it.skipIf(process.platform === "win32")("rejects symlink client roots before packing", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-dir-remote-sym-"));
     dirs.push(root);
     const real = join(root, "real");
@@ -708,5 +708,120 @@ describe("Host mounts over RemoteHost", () => {
         ],
       }),
     ).rejects.toMatchObject({ code: "validation", message: expect.stringMatching(/read-only/i) });
+  });
+
+  it("accepts mode: copy and rejects writable/quota copy mounts", () => {
+    const parsed = parseYamlProjectInput({
+      version: 1,
+      project: "demo",
+      profiles: {
+        default: {
+          image: "alpine:3.20",
+          mounts: [
+            { path: "./a.txt", mount: "/a.txt", mode: "copy" },
+            { path: "~/secrets", mount: "/secrets", source: "host", mode: "copy" },
+          ],
+        },
+      },
+    });
+    expect(parsed.profiles.default?.mounts).toEqual([
+      { path: "./a.txt", mount: "/a.txt", mode: "copy" },
+      { path: "~/secrets", mount: "/secrets", source: "host", mode: "copy" },
+    ]);
+
+    expect(() =>
+      assertHostMounts([
+        {
+          source: "host",
+          path: "/var/data",
+          mount: "/data",
+          readonly: false,
+          mode: "copy",
+        },
+      ]),
+    ).toThrow(/read-only/i);
+
+    expect(() =>
+      assertHostMounts([
+        {
+          source: "host",
+          path: "/var/data",
+          mount: "/data",
+          readonly: true,
+          mode: "copy",
+          quotaMiB: 64,
+        },
+      ]),
+    ).toThrow(/quota/i);
+  });
+
+  it("native bind matching ignores copy mounts", async () => {
+    const { bindMountsMatchHostMounts } = await import("../src/directory/decode-binds.js");
+    const { canonicalMountsFingerprint } = await import("../src/directory/types.js");
+    expect(
+      bindMountsMatchHostMounts(
+        [{ guestPath: "/bind", hostPath: "/h", readonly: true }],
+        [
+          { mount: "/bind", readonly: true },
+          { mount: "/copied", readonly: true, mode: "copy" },
+        ],
+      ),
+    ).toBe(true);
+
+    const fingerprinted = canonicalMountsFingerprint([
+      {
+        source: "client",
+        path: "./a",
+        mount: "/a",
+        readonly: true,
+        kind: "file",
+        mode: "copy",
+      },
+      {
+        source: "client",
+        path: "./b",
+        mount: "/b",
+        readonly: true,
+        kind: "file",
+      },
+    ]);
+    expect(fingerprinted[0]).toMatchObject({ mount: "/a", mode: "copy" });
+    expect(fingerprinted[1]).toMatchObject({ mount: "/b" });
+    expect(fingerprinted[1]).not.toHaveProperty("mode");
+  });
+
+  it("FakeHost create records copy mounts in ownership labels", async () => {
+    const host = new FakeHost();
+    const identity = assertSandboxIdentity({
+      project: "demo",
+      profile: "default",
+      instance: "copy",
+    });
+    const inspection = await host.create({
+      identity,
+      image: "alpine:3.20",
+      mounts: [
+        {
+          source: "client",
+          path: "/tmp/npmrc",
+          mount: "/root/.npmrc",
+          readonly: true,
+          kind: "file",
+          mode: "copy",
+        },
+      ],
+    });
+    const mounts = mountsFromLabels(inspection.labels);
+    expect(mounts).toEqual([
+      {
+        source: "client",
+        path: "/tmp/npmrc",
+        mount: "/root/.npmrc",
+        readonly: true,
+        kind: "file",
+        mode: "copy",
+      },
+    ]);
+    await host.remove(identity);
   });
 });

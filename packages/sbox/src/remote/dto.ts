@@ -87,6 +87,7 @@ const hostMountSchema = z
     kind: z.enum(["file", "directory"]).optional(),
     quotaMiB: z.number().int().positive().optional(),
     followEscapingSymlinks: z.boolean().optional(),
+    mode: z.enum(["bind", "copy"]).optional(),
   })
   .superRefine((value, ctx) => {
     if (value.source === "host") {
@@ -103,6 +104,21 @@ const hostMountSchema = z
         code: "custom",
         path: ["readonly"],
         message: "Client-sourced Host mounts must be read-only.",
+      });
+    }
+    const mode = value.mode ?? "bind";
+    if (mode === "copy" && !value.readonly) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["readonly"],
+        message: "Copy mounts are one-shot snapshots and must be read-only.",
+      });
+    }
+    if (mode === "copy" && value.quotaMiB !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["quotaMiB"],
+        message: "Quota is only allowed for writable Host bind mounts.",
       });
     }
     if (value.readonly && value.quotaMiB !== undefined) {

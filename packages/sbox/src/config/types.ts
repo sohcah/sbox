@@ -41,15 +41,20 @@ export interface HostMountConfig {
   readonly mount: string;
   /** Default `client`. */
   readonly source?: "client" | "host";
-  /** Default `true`. Writable only when `source: host`. */
+  /** Default `true`. Writable only when `source: host` with `mode: bind`. */
   readonly readonly?: boolean;
-  /** Binary size string; optional for writable Host mounts (MSB protective default). */
+  /** Binary size string; optional for writable Host bind mounts (MSB protective default). */
   readonly quota?: string;
   /**
    * Client mounts only. When true, remote packing dereferences escaping/absolute
    * symlinks into real file/dir content. Default false.
    */
   readonly followEscapingSymlinks?: boolean;
+  /**
+   * Default `bind` (virtio). `copy` materializes once into the guest rootfs at
+   * create without a virtio device (avoids microVM IRQ limits).
+   */
+  readonly mode?: "bind" | "copy";
 }
 
 /** @deprecated Use HostMountConfig */
@@ -63,6 +68,7 @@ export interface SafeHostMount {
   readonly readonly: boolean;
   readonly quota?: string;
   readonly followEscapingSymlinks?: boolean;
+  readonly mode?: "bind" | "copy";
 }
 
 /** @deprecated Use SafeHostMount */

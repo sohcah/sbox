@@ -57,6 +57,7 @@ import { assertBindablePath } from "./directory/assert-directory.js";
 import { mountsFromLabels } from "./directory/labels.js";
 import { removeDirectoryStages } from "./directory/stages.js";
 import type { HostMount } from "./directory/types.js";
+import { mountMode } from "./directory/types.js";
 import { assertHostMounts } from "./directory/validate.js";
 import { expandHomePrefix } from "./directory/home-path.js";
 import type {
@@ -247,6 +248,18 @@ class LocalHost implements Host {
 
       // Success path: release volume locks after native create published.
       await volumePrep.releaseLocks();
+
+      try {
+        await this.applyCopyMounts(nativeName, preparedMounts.mounts, options?.signal);
+      } catch (copyError) {
+        await this.abortPublishedCreate(nativeName, identity, volumePrep.mounts);
+        try {
+          await volumePrep.rollback();
+        } catch {
+          // Best-effort after abort.
+        }
+        throw wrapUnknownFailure(copyError, "Sandbox create failed while applying copy mounts.");
+      }
 
       try {
         await this.consumeLive(nativeName);
@@ -1142,7 +1155,15 @@ class LocalHost implements Host {
           { details: { path: `mounts.${i}.kind` } },
         );
       }
-      mounts.push({ ...entry, kind });
+      const resolved: HostMount = {
+        ...entry,
+        kind,
+        ...(mountMode(entry) === "copy" ? { mode: "copy" as const } : {}),
+      };
+      mounts.push(resolved);
+      if (mountMode(resolved) === "copy") {
+        continue;
+      }
       bindMounts.push({
         guestPath: entry.mount,
         hostPath,
@@ -1154,6 +1175,63 @@ class LocalHost implements Host {
       mounts: Object.freeze(mounts),
       bindMounts: Object.freeze(bindMounts),
     };
+  }
+
+  /**
+   * Materialize copy-mode mounts into the running guest (no virtio devices).
+   * Create-time only; content is not refreshed on later start.
+   */
+  private async applyCopyMounts(
+    nativeName: string,
+    mounts: readonly HostMount[],
+    signal?: AbortSignal,
+  ): Promise<void> {
+    for (let i = 0; i < mounts.length; i += 1) {
+      const entry = mounts[i]!;
+      if (mountMode(entry) !== "copy") {
+        continue;
+      }
+      throwIfAborted(signal);
+      const hostPath = expandHomePrefix(entry.bindHostPath ?? entry.path);
+      await copyHostToGuest(nativeName, hostPath, entry.mount, {
+        overwrite: "replace",
+        ...(signal !== undefined ? { signal } : {}),
+      });
+    }
+  }
+
+  private async abortPublishedCreate(
+    nativeName: string,
+    identity: SandboxIdentity,
+    diskMounts: readonly NativeDiskMount[],
+  ): Promise<void> {
+    try {
+      await this.consumeLive(nativeName);
+    } catch {
+      // Best-effort; remove may still succeed.
+    }
+    try {
+      const current = await this.tryGet(nativeName);
+      if (current !== undefined) {
+        if (current.status === "running" || current.status === "draining") {
+          await this.stopExact(nativeName);
+        }
+        await this.runtime.remove(nativeName);
+      }
+    } catch {
+      // Best-effort cleanup before surfacing the copy failure.
+    }
+    this.liveByName.delete(nativeName);
+    try {
+      await this.cleanupManagedOverlays(identity, diskMounts);
+    } catch {
+      // ignore
+    }
+    try {
+      await removeDirectoryStages(identity);
+    } catch {
+      // ignore
+    }
   }
 
   private validateCreateRequest(request: HostCreateRequest): void {

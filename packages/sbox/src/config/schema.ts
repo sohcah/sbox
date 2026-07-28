@@ -56,10 +56,12 @@ const hostMountSchema = z
     readonly: z.boolean().optional(),
     quota: binarySizeSchema.optional(),
     followEscapingSymlinks: z.boolean().optional(),
+    mode: z.enum(["bind", "copy"]).optional(),
   })
   .superRefine((value, ctx) => {
     const source = value.source ?? "client";
     const readonly = value.readonly ?? true;
+    const mode = value.mode ?? "bind";
     if (source === "host") {
       const path = value.path;
       if (!isAbsoluteOrHomeRelativeHostPath(path)) {
@@ -75,6 +77,20 @@ const hostMountSchema = z
         code: "custom",
         path: ["readonly"],
         message: "Client-sourced Host mounts must be read-only.",
+      });
+    }
+    if (mode === "copy" && !readonly) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["readonly"],
+        message: "Copy mounts are one-shot snapshots and must be read-only.",
+      });
+    }
+    if (mode === "copy" && value.quota !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["quota"],
+        message: "Quota is only allowed for writable Host bind mounts.",
       });
     }
     if (readonly && value.quota !== undefined) {

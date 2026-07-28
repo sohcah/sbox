@@ -9,9 +9,10 @@ export type {
   HostMount,
   MountAttachmentSpec,
   MountKind,
+  MountMode,
   MountSource,
 } from "./types.js";
-export { canonicalDirectoriesFingerprint, canonicalMountsFingerprint } from "./types.js";
+export { canonicalDirectoriesFingerprint, canonicalMountsFingerprint, mountMode } from "./types.js";
 export {
   normalizeDirectoryMountConfig,
   normalizeHostMountConfig,

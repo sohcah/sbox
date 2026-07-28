@@ -16,9 +16,13 @@ export function normalizeHostMountConfig(
   const issues: ConfigurationIssue[] = [];
   const source: MountSource = raw.source ?? "client";
   const readonly = raw.readonly ?? true;
+  const mode = raw.mode ?? "bind";
 
   if (source !== "client" && source !== "host") {
     issues.push({ path: `${pathPrefix}.source`, message: 'Expected "client" or "host".' });
+  }
+  if (mode !== "bind" && mode !== "copy") {
+    issues.push({ path: `${pathPrefix}.mode`, message: 'Expected "bind" or "copy".' });
   }
   if (typeof raw.path !== "string" || raw.path.trim().length === 0) {
     issues.push({ path: `${pathPrefix}.path`, message: "Expected a non-empty path." });
@@ -41,6 +45,18 @@ export function normalizeHostMountConfig(
     issues.push({
       path: `${pathPrefix}.readonly`,
       message: "Client-sourced Host mounts must be read-only.",
+    });
+  }
+  if (mode === "copy" && !readonly) {
+    issues.push({
+      path: `${pathPrefix}.readonly`,
+      message: "Copy mounts are one-shot snapshots and must be read-only.",
+    });
+  }
+  if (mode === "copy" && raw.quota !== undefined) {
+    issues.push({
+      path: `${pathPrefix}.quota`,
+      message: "Quota is only allowed for writable Host bind mounts.",
     });
   }
   if (readonly && raw.quota !== undefined) {
@@ -88,6 +104,7 @@ export function normalizeHostMountConfig(
       ...(quotaMiB !== undefined ? { quotaMiB } : {}),
       ...(raw.quota !== undefined ? { quota: raw.quota } : {}),
       ...(raw.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
+      ...(mode === "copy" ? { mode: "copy" as const } : {}),
     },
   };
 }
@@ -100,6 +117,7 @@ export type RequiredHostMount = {
   readonly quotaMiB?: number;
   readonly quota?: string;
   readonly followEscapingSymlinks?: boolean;
+  readonly mode?: "bind" | "copy";
 };
 
 /** @deprecated Use normalizeHostMountConfig */

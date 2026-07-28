@@ -261,6 +261,7 @@ export type {
   HostMount,
   MountAttachmentSpec,
   MountKind,
+  MountMode,
   MountSource,
 } from "./directory/types.js";
 

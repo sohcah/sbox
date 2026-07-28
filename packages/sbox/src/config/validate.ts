@@ -133,6 +133,7 @@ type YamlProfileInput = {
     readonly readonly?: boolean;
     readonly quota?: string;
     readonly followEscapingSymlinks?: boolean;
+    readonly mode?: "bind" | "copy";
   }[];
 };
 
@@ -210,6 +211,7 @@ function normalizeYamlProjectInput(input: {
               ...(entry.readonly !== undefined ? { readonly: entry.readonly } : {}),
               ...(entry.quota !== undefined ? { quota: entry.quota } : {}),
               ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
+              ...(entry.mode === "copy" ? { mode: "copy" as const } : {}),
             })),
           }
         : {}),
@@ -353,6 +355,7 @@ export function toSafeProjectConfig(config: ProjectConfig): SafeProjectConfig {
                 readonly: entry.readonly ?? true,
                 ...(entry.quota !== undefined ? { quota: entry.quota } : {}),
                 ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
+                ...(entry.mode === "copy" ? { mode: "copy" as const } : {}),
               }),
             ),
           }
@@ -577,6 +580,7 @@ function freezeProjectConfig(config: {
                   ...(entry.followEscapingSymlinks === true
                     ? { followEscapingSymlinks: true }
                     : {}),
+                  ...(entry.mode === "copy" ? { mode: "copy" as const } : {}),
                 }),
               ),
             ),

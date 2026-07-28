@@ -50,6 +50,7 @@ export function mountsFromLabels(labels: LabelMap | undefined): readonly MountAt
         kind: kind as MountKind,
         ...(typeof record["quotaMiB"] === "number" ? { quotaMiB: record["quotaMiB"] } : {}),
         ...(record["followEscapingSymlinks"] === true ? { followEscapingSymlinks: true } : {}),
+        ...(record["mode"] === "copy" ? { mode: "copy" as const } : {}),
       });
     }
     return Object.freeze(canonicalMountsFingerprint(out));

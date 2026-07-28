@@ -77,13 +77,14 @@ directory) is inferred at create from the real path — not a YAML field.
 | `path` | required | Client: relative to project config dir (`~/…` → home; absolute allowed). Host: absolute on the Host, or `~/…` expanded on the Host. |
 | `mount` | required | Absolute guest path; unique across `mounts` and `volumes`. |
 | `source` | `client` | `client` or `host`. |
-| `readonly` | `true` | Client sources must stay read-only. |
-| `quota` | — | Optional when `readonly: false` (Host writable only). Omit to accept Microsandbox’s protective default. |
+| `readonly` | `true` | Client sources must stay read-only. Copy mounts must stay read-only. |
+| `mode` | `bind` | `bind` uses a virtio bind (consumes a microVM IRQ). `copy` materializes once into the guest rootfs via agent FS at create — no virtio device (use this when many specific paths would exhaust IRQs). Guest may still mutate the copied snapshot. |
+| `quota` | — | Optional when `readonly: false` (Host writable bind only). Omit to accept Microsandbox’s protective default. Not allowed with `mode: copy`. |
 | `followEscapingSymlinks` | `false` | Client mounts only. When packing for a remote target, dereference absolute/escaping symlinks into real file/dir content. Safe relative links inside the mount root stay links. Local binds ignore this (host FS links already work). |
 
 At create, the path must exist as a real file or directory (symlink roots
 rejected). On a remote target, Client paths are staged once onto the serve Host,
-then bound read-only; Host paths are validated on the serve machine.
+then bound or copied; Host paths are validated on the serve machine.
 
 ## User targets
 

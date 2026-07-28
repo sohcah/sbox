@@ -86,10 +86,12 @@ export function bindMountsMatchHostMounts(
     readonly mount: string;
     readonly readonly: boolean;
     readonly quotaMiB?: number;
+    readonly mode?: "bind" | "copy";
   }[],
 ): boolean {
+  const bindOnly = mounts.filter((entry) => entry.mode !== "copy");
   const expected = canonicalBindMountFingerprint(
-    mounts.map((entry) => ({
+    bindOnly.map((entry) => ({
       guestPath: entry.mount,
       hostPath: "",
       readonly: entry.readonly,

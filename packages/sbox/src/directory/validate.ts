@@ -5,11 +5,12 @@
 import { isAbsoluteGuestPath } from "../config/scalars.js";
 import { SboxError } from "../errors.js";
 import { isAbsoluteOrHomeRelativeHostPath } from "./home-path.js";
-import type { HostMount, MountKind } from "./types.js";
+import type { HostMount, MountKind, MountMode } from "./types.js";
+import { mountMode } from "./types.js";
 
 /**
  * Enforce product invariants on every create request (local and remote decode).
- * Does not check filesystem existence — that remains create-time bind prep.
+ * Does not check filesystem existence — that remains create-time bind/copy prep.
  */
 export function assertHostMounts(
   mounts: readonly HostMount[] | undefined,
@@ -31,6 +32,11 @@ export function assertHostMounts(
     if (entry.source !== "client" && entry.source !== "host") {
       throw SboxError.validation('Host mount source must be "client" or "host".', {
         details: { path: `${prefix}.source` },
+      });
+    }
+    if (entry.mode !== undefined && entry.mode !== "bind" && entry.mode !== "copy") {
+      throw SboxError.validation('Host mount mode must be "bind" or "copy".', {
+        details: { path: `${prefix}.mode` },
       });
     }
     if (typeof entry.path !== "string" || entry.path.trim().length === 0) {
@@ -62,6 +68,17 @@ export function assertHostMounts(
     if (entry.source === "client" && !entry.readonly) {
       throw SboxError.validation("Client-sourced Host mounts must be read-only.", {
         details: { path: `${prefix}.readonly` },
+      });
+    }
+    const mode: MountMode = mountMode(entry);
+    if (mode === "copy" && !entry.readonly) {
+      throw SboxError.validation("Copy mounts are one-shot snapshots and must be read-only.", {
+        details: { path: `${prefix}.readonly` },
+      });
+    }
+    if (mode === "copy" && entry.quotaMiB !== undefined) {
+      throw SboxError.validation("Quota is only allowed for writable Host bind mounts.", {
+        details: { path: `${prefix}.quotaMiB` },
       });
     }
     if (entry.readonly && entry.quotaMiB !== undefined) {

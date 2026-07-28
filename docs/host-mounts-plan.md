@@ -98,3 +98,6 @@ Writable client sources, copy-back/sync, creation overlays, Sandcastle
 auto-mount, nested guest-path overlap detection, relative Host paths (except
 `~/`), symlink roots, tmpfs/named volumes/raw disk pass-through, permanent
 `directories:` alias, renaming the on-disk `directory-stages` directory.
+
+`mode: copy` (one-shot materialize into guest rootfs at create, no virtio) is
+supported as an IRQ-budget alternative to bind; it is not live sync or copy-back.

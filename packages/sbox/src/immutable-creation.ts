@@ -77,6 +77,7 @@ export function projectCreateRequest(request: {
           kind: entry.kind,
           ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
           ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
+          ...(entry.mode === "copy" ? { mode: "copy" as const } : {}),
         };
       }),
     ),

@@ -7,6 +7,13 @@ export type MountSource = "client" | "host";
 /** Inferred at create from the real bind path (not a YAML field). */
 export type MountKind = "file" | "directory";
 
+/**
+ * How content is delivered into the guest.
+ * - `bind` (default): virtio bind mount (consumes a microVM IRQ).
+ * - `copy`: one-shot materialize into the guest rootfs at create (no virtio device).
+ */
+export type MountMode = "bind" | "copy";
+
 /** Safe / inspection / fingerprint projection (no Mount stage paths). */
 export interface MountAttachmentSpec {
   readonly source: MountSource;
@@ -21,6 +28,8 @@ export interface MountAttachmentSpec {
    * Omitted when false.
    */
   readonly followEscapingSymlinks?: boolean;
+  /** Omitted when `bind` (default) so existing fingerprints stay stable. */
+  readonly mode?: MountMode;
 }
 
 /**
@@ -37,7 +46,12 @@ export interface HostMount {
   readonly kind?: MountKind;
   readonly quotaMiB?: number;
   readonly followEscapingSymlinks?: boolean;
+  readonly mode?: MountMode;
   readonly bindHostPath?: string;
+}
+
+export function mountMode(entry: { readonly mode?: MountMode }): MountMode {
+  return entry.mode ?? "bind";
 }
 
 export function canonicalMountsFingerprint(
@@ -53,6 +67,7 @@ export function canonicalMountsFingerprint(
         kind: entry.kind,
         ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
         ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
+        ...(entry.mode === "copy" ? { mode: "copy" as const } : {}),
       }),
     )
     .toSorted((a, b) => {

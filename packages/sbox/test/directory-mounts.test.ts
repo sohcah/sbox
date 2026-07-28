@@ -613,21 +613,24 @@ describe("Host mounts over RemoteHost", () => {
     ).toThrow(/followEscapingSymlinks/i);
   });
 
-  it.skipIf(process.platform === "win32")("rejects symlink client roots before packing", async () => {
-    const root = await mkdtemp(join(tmpdir(), "sbox-dir-remote-sym-"));
-    dirs.push(root);
-    const real = join(root, "real");
-    const link = join(root, "link");
-    await mkdir(real);
-    await symlink(real, link);
+  it.skipIf(process.platform === "win32")(
+    "rejects symlink client roots before packing",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "sbox-dir-remote-sym-"));
+      dirs.push(root);
+      const real = join(root, "real");
+      const link = join(root, "link");
+      await mkdir(real);
+      await symlink(real, link);
 
-    await expect(
-      packClientMountArchive([{ source: "client", path: link, mount: "/x", readonly: true }]),
-    ).rejects.toMatchObject({
-      code: "validation",
-      message: expect.stringMatching(/symlink/i),
-    });
-  });
+      await expect(
+        packClientMountArchive([{ source: "client", path: link, mount: "/x", readonly: true }]),
+      ).rejects.toMatchObject({
+        code: "validation",
+        message: expect.stringMatching(/symlink/i),
+      });
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "followEscapingSymlinks dereferences escaping links when packing Client mounts",
@@ -724,7 +727,7 @@ describe("Host mounts over RemoteHost", () => {
         },
       },
     });
-    expect(parsed.profiles.default?.mounts).toEqual([
+    expect(parsed.profiles["default"]?.mounts).toEqual([
       { path: "./a.txt", mount: "/a.txt", mode: "copy" },
       { path: "~/secrets", mount: "/secrets", source: "host", mode: "copy" },
     ]);

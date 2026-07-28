@@ -29,6 +29,7 @@ import {
   volumeShellRequestSchema,
 } from "./dto.js";
 import { resolveRemoteLimits, type RemoteLimits } from "./limits.js";
+import { createStdinBridge, type StdinBridge } from "./stdin-bridge.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -642,6 +643,7 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
     let mode: "process" | "pty" | undefined;
     let sessionReady = false;
     let cleaned = false;
+    let stdinBridge: StdinBridge | undefined;
 
     type Frame = { readonly data: RawData; readonly isBinary: boolean };
     const pendingFrames: Frame[] = [];
@@ -656,6 +658,7 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
       clearTimeout(durationTimer);
       state.activeCancels.delete(cancel);
       state.processes -= 1;
+      stdinBridge?.end();
       if (session !== undefined) {
         try {
           await session.cancel("disconnect");
@@ -682,6 +685,8 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
         const bytes = rawToBuffer(data);
         if (mode === "pty") {
           await (session as PtySession).write(bytes);
+        } else if (stdinBridge !== undefined) {
+          await stdinBridge.push(new Uint8Array(bytes));
         } else {
           await (session as ProcessSession).stdin.write(bytes);
         }
@@ -690,7 +695,11 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
       const control = sessionControlSchema.parse(JSON.parse(String(rawToBuffer(data))));
       if (control.type === "stdin_end") {
         if (mode === "process") {
-          await (session as ProcessSession).stdin.end();
+          if (stdinBridge !== undefined) {
+            stdinBridge.end();
+          } else {
+            await (session as ProcessSession).stdin.end();
+          }
         }
         return;
       }
@@ -803,31 +812,25 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
         })();
       } else {
         mode = "process";
+        stdinBridge = createStdinBridge();
+        const streamOptions = {
+          ...(start.cwd !== undefined ? { cwd: start.cwd } : {}),
+          ...(start.env !== undefined ? { env: start.env } : {}),
+          ...(start.user !== undefined ? { user: start.user } : {}),
+          ...(start.timeoutMs !== undefined ? { timeoutMs: start.timeoutMs } : {}),
+          signal: ac.signal,
+          stdin: stdinBridge.iterable,
+        };
         session =
           start.kind === "argv"
-            ? await options.host.execArgvStream(
-                { identity, argv: start.argv },
-                {
-                  ...(start.cwd !== undefined ? { cwd: start.cwd } : {}),
-                  ...(start.env !== undefined ? { env: start.env } : {}),
-                  ...(start.user !== undefined ? { user: start.user } : {}),
-                  ...(start.timeoutMs !== undefined ? { timeoutMs: start.timeoutMs } : {}),
-                  signal: ac.signal,
-                },
-              )
+            ? await options.host.execArgvStream({ identity, argv: start.argv }, streamOptions)
             : await options.host.execShellStream(
                 {
                   identity,
                   script: start.script,
                   ...(start.shell !== undefined ? { shell: start.shell } : {}),
                 },
-                {
-                  ...(start.cwd !== undefined ? { cwd: start.cwd } : {}),
-                  ...(start.env !== undefined ? { env: start.env } : {}),
-                  ...(start.user !== undefined ? { user: start.user } : {}),
-                  ...(start.timeoutMs !== undefined ? { timeoutMs: start.timeoutMs } : {}),
-                  signal: ac.signal,
-                },
+                streamOptions,
               );
         sessionReady = true;
         for (const frame of pendingFrames.splice(0)) {

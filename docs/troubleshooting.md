@@ -48,6 +48,9 @@ the other maintenance/create session. Never manually edit QCOW2 files under
 - Guest non-zero exit is not an operational failure for `exec`/`shell`/`run`
 - Streaming callers must consume events or cancel
 - PTY uses a private agent-protocol adapter; see `patches/README.md`
+- Remote streaming stdin (Codex/`codex exec` prompts, `cat`, …) requires a
+  current `sbox serve`: older servers closed guest stdin before WebSocket
+  prompt bytes arrived (`No prompt provided via stdin`)
 
 ## Sandcastle
 

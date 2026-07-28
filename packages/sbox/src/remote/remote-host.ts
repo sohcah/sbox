@@ -764,6 +764,9 @@ class RemoteHostImpl implements Host {
         }
         await stdin.end();
       })();
+    } else {
+      // No caller stdin: send EOF so the server-side bridge can close the guest pipe.
+      void stdin.end();
     }
 
     return {

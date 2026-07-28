@@ -76,6 +76,48 @@ describe("remote host contract", () => {
     expect(await remote.list({ project: identity.project })).toEqual([]);
   });
 
+  it("delivers streaming stdin after session ready (Codex-style prompt pipe)", async () => {
+    const fake = new FakeHost();
+    let seenStdin: Uint8Array | undefined;
+    fake.execHandler = async (_argv, stdin) => {
+      seenStdin = stdin;
+      return { exitCode: 0, stdout: stdin, stderr: new Uint8Array() };
+    };
+    await using server = await createSboxServer({
+      host: fake,
+      bearerToken: TOKEN,
+      bind: "127.0.0.1",
+    });
+    await using remote = createRemoteHost({ url: server.url, bearerToken: TOKEN });
+    const identity = assertSandboxIdentity({
+      project: "demo",
+      profile: "default",
+      instance: "stdin",
+    });
+    await remote.create({ identity, image: "alpine:3.20" });
+
+    const prompt = "fix the race and reply done";
+    const session = await remote.execShellStream(
+      { identity, script: "codex exec --json -m test" },
+      {
+        stdin: (async function* () {
+          yield utf8ToBytes(prompt);
+        })(),
+      },
+    );
+    const chunks: Uint8Array[] = [];
+    for await (const event of session) {
+      if (event.type === "stdout") {
+        chunks.push(event.data);
+      }
+    }
+    await expect(session.wait()).resolves.toEqual({ exitCode: 0, signal: null });
+    expect(seenStdin && Buffer.from(seenStdin).toString("utf8")).toBe(prompt);
+    expect(Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf8")).toBe(prompt);
+
+    await remote.remove(identity);
+  });
+
   it("rejects wrong bearer on HTTP handshake", async () => {
     const fake = new FakeHost();
     await using server = await createSboxServer({

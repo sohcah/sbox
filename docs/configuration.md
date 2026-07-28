@@ -31,6 +31,8 @@ profiles:
     workdir: /workspace
     user: root
     shell: /bin/sh
+    # Optional: size guest /tmp tmpfs (default is Microsandbox's ~512MiB)
+    # tmp: 2GiB
     volumes:
       - volume: cache
         path: /cache
@@ -64,6 +66,16 @@ profiles:
 Dockerfile-backed profiles use `build:` instead of `image:` (context +
 optional dockerfile path). Ordinary environment and build args may be literal
 or external refs (`env` / `file` / `invocation`).
+
+## Guest `/tmp` size
+
+| Field | Default | Notes |
+| --- | --- | --- |
+| `tmp` | MSB default (~512MiB) | Binary size sugar (`2GiB`). Maps to Microsandbox `.volume("/tmp", m => m.tmpfs().size(…))`. |
+| `tmpMiB` | — | Typed alternate; mutually exclusive with `tmp`. |
+
+Omit both fields to keep Microsandbox’s implicit `/tmp`. Guest path `/tmp` is
+reserved — do not attach volumes or Host mounts there.
 
 ## Host mounts
 

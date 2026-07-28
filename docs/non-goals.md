@@ -33,7 +33,8 @@ durable claims. The volume lock must not grow into reusable workflow machinery.
   publication workflow.
 - No automatic resize, filesystem migration, rebasing, repair, or adoption.
 - No implicit cross-project base sharing.
-- No Microsandbox named-volume or arbitrary tmpfs abstraction in `0.1`.
+- No Microsandbox named-volume or arbitrary tmpfs abstraction in `0.1`
+  (except the single profile `tmp` / `tmpMiB` knob for guest `/tmp` size).
 - No broad volume prune or automatic stale-resource deletion.
 
 One mutable base, disposable direct children, and an exclusive maintenance

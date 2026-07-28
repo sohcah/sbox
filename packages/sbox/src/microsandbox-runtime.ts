@@ -86,6 +86,11 @@ class MicrosandboxRuntime implements NativeRuntime {
         });
       }
 
+      if (request.tmpMiB !== null) {
+        const tmpMiB = request.tmpMiB;
+        builder = builder.volume("/tmp", (m) => m.tmpfs().size(tmpMiB));
+      }
+
       const sandbox = await builder.create();
       return wrapLive(sandbox);
     } catch (error) {
@@ -208,6 +213,7 @@ export function recordFromHandle(handle: {
     image: decoded.image,
     cpus: decoded.cpus,
     memoryMiB: decoded.memoryMiB,
+    tmpMiB: decoded.tmpMiB,
     workdir: decoded.workdir,
     user: decoded.user,
     shell: decoded.shell,

@@ -189,6 +189,7 @@ class LocalHost implements Host {
           detached: true,
           cpus: projected.cpus,
           memoryMiB: projected.memoryMiB,
+          tmpMiB: projected.tmpMiB,
           workdir: projected.workdir,
           user: projected.user,
           shell: projected.shell,
@@ -671,6 +672,7 @@ class LocalHost implements Host {
             detached: true,
             cpus: projected.cpus,
             memoryMiB: projected.memoryMiB,
+            tmpMiB: projected.tmpMiB,
             workdir: projected.workdir,
             user: projected.user,
             shell: projected.shell,
@@ -1125,6 +1127,7 @@ class LocalHost implements Host {
       image: record.image,
       cpus: record.cpus,
       memoryMiB: record.memoryMiB,
+      ...(record.tmpMiB !== null ? { tmpMiB: record.tmpMiB } : {}),
       ...(record.workdir !== null ? { workdir: record.workdir } : {}),
       ...(record.user !== null ? { user: record.user } : {}),
       ...(record.shell !== null ? { shell: record.shell } : {}),
@@ -1260,6 +1263,14 @@ class LocalHost implements Host {
     ) {
       throw SboxError.validation("Sandbox memoryMiB must be a positive integer.", {
         details: { path: "memoryMiB" },
+      });
+    }
+    if (
+      request.tmpMiB !== undefined &&
+      (!Number.isInteger(request.tmpMiB) || request.tmpMiB < 1)
+    ) {
+      throw SboxError.validation("Sandbox tmpMiB must be a positive integer.", {
+        details: { path: "tmpMiB" },
       });
     }
     if (

@@ -642,6 +642,7 @@ export class FakeHost implements Host {
       image: input.creation?.image ?? "alpine:3.20",
       cpus: input.creation?.cpus ?? 1,
       memoryMiB: input.creation?.memoryMiB ?? 512,
+      ...(input.creation?.tmpMiB !== undefined ? { tmpMiB: input.creation.tmpMiB } : {}),
       ...(input.creation?.workdir !== undefined ? { workdir: input.creation.workdir } : {}),
       ...(input.creation?.user !== undefined ? { user: input.creation.user } : {}),
       ...(input.creation?.shell !== undefined ? { shell: input.creation.shell } : {}),
@@ -659,6 +660,7 @@ export class FakeHost implements Host {
       image: creation.image,
       cpus: creation.cpus,
       memoryMiB: creation.memoryMiB,
+      ...(creation.tmpMiB !== undefined ? { tmpMiB: creation.tmpMiB } : {}),
       ...(creation.workdir !== undefined ? { workdir: creation.workdir } : {}),
       ...(creation.user !== undefined ? { user: creation.user } : {}),
       ...(creation.shell !== undefined ? { shell: creation.shell } : {}),
@@ -839,6 +841,14 @@ export class FakeHost implements Host {
       });
     }
     if (
+      request.tmpMiB !== undefined &&
+      (!Number.isInteger(request.tmpMiB) || request.tmpMiB < 1)
+    ) {
+      throw SboxError.validation("Sandbox tmpMiB must be a positive integer.", {
+        details: { path: "tmpMiB" },
+      });
+    }
+    if (
       request.maxDurationSecs !== undefined &&
       request.maxDurationSecs !== null &&
       (!Number.isInteger(request.maxDurationSecs) || request.maxDurationSecs < 1)
@@ -1000,6 +1010,7 @@ function creationFromProjection(
     image: projected.image,
     cpus: projected.cpus,
     memoryMiB: projected.memoryMiB,
+    ...(projected.tmpMiB !== null ? { tmpMiB: projected.tmpMiB } : {}),
     ...(projected.workdir !== null ? { workdir: projected.workdir } : {}),
     ...(projected.user !== null ? { user: projected.user } : {}),
     ...(projected.shell !== null ? { shell: projected.shell } : {}),

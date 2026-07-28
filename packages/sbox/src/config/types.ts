@@ -102,6 +102,8 @@ export interface ImageBuildConfig {
 export interface ProfileCommon {
   readonly cpus?: number;
   readonly memoryMiB?: number;
+  /** Guest `/tmp` tmpfs size in MiB. Omit to keep Microsandbox's default. */
+  readonly tmpMiB?: number;
   readonly workdir?: string;
   readonly user?: string;
   readonly shell?: string;
@@ -198,6 +200,7 @@ export interface SafeProjectConfig {
         readonly build?: SafeImageBuildConfig;
         readonly cpus?: number;
         readonly memoryMiB?: number;
+        readonly tmpMiB?: number;
         readonly workdir?: string;
         readonly user?: string;
         readonly shell?: string;

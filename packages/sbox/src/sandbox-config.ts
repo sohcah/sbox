@@ -25,6 +25,8 @@ export interface DecodedSandboxConfig {
   readonly image: string;
   readonly cpus: number;
   readonly memoryMiB: number;
+  /** Size of `/tmp` tmpfs when present in mounts; otherwise null. */
+  readonly tmpMiB: number | null;
   readonly workdir: string | null;
   readonly user: string | null;
   readonly shell: string | null;
@@ -62,6 +64,7 @@ export function decodeSandboxConfig(config: unknown): DecodedSandboxConfig {
       "resources.memoryMib",
       PHASE1_DEFAULT_MEMORY_MIB,
     ),
+    tmpMiB: decodeTmpfsSizeMiB(config, "/tmp"),
     workdir: readNullableString(runtime?.["workdir"]),
     user: readNullableString(runtime?.["user"]),
     shell: readNullableString(runtime?.["shell"]),
@@ -131,6 +134,36 @@ function readOciImageReference(image: unknown): string {
     throw new Error("SandboxConfig.image.Oci.reference must be a non-empty string.");
   }
   return reference;
+}
+
+/** Read `/tmp` (or other guest) tmpfs size from SandboxConfig mounts when present. */
+function decodeTmpfsSizeMiB(config: unknown, guestPath: string): number | null {
+  if (config === null || typeof config !== "object") {
+    return null;
+  }
+  const mounts = (config as Record<string, unknown>)["mounts"];
+  if (!Array.isArray(mounts)) {
+    return null;
+  }
+  for (const entry of mounts) {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const type = record["type"] ?? record["kind"];
+    if (type !== "Tmpfs" && type !== "tmpfs") {
+      continue;
+    }
+    if (record["guest"] !== guestPath) {
+      continue;
+    }
+    const size = record["sizeMib"] ?? record["sizeMiB"];
+    if (typeof size === "number" && Number.isInteger(size) && size > 0) {
+      return size;
+    }
+    return null;
+  }
+  return null;
 }
 
 function readLabels(raw: unknown): Readonly<Record<string, string>> {

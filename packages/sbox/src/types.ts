@@ -43,6 +43,8 @@ export interface HostCreateRequest {
   readonly cpus?: number;
   /** Memory in mebibytes. */
   readonly memoryMiB?: number;
+  /** Guest `/tmp` tmpfs size in mebibytes. Omit for Microsandbox default. */
+  readonly tmpMiB?: number;
   readonly workdir?: string;
   readonly user?: string;
   readonly shell?: string;
@@ -91,6 +93,8 @@ export interface SandboxCreationSettings {
   readonly image: string;
   readonly cpus: number;
   readonly memoryMiB: number;
+  /** Guest `/tmp` tmpfs size when explicitly configured; omit when MSB default. */
+  readonly tmpMiB?: number;
   readonly workdir?: string;
   readonly user?: string;
   readonly shell?: string;

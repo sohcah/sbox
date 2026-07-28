@@ -34,6 +34,8 @@ export interface SandboxImmutableCreation {
   readonly image: string;
   readonly cpus: number;
   readonly memoryMiB: number;
+  /** Explicit guest `/tmp` tmpfs size; `null` keeps Microsandbox default (not fingerprinted). */
+  readonly tmpMiB: number | null;
   readonly workdir: string | null;
   readonly user: string | null;
   readonly shell: string | null;
@@ -98,6 +100,7 @@ export type NativeCreationEvidence = {
   readonly image: string;
   readonly cpus: number;
   readonly memoryMiB: number;
+  readonly tmpMiB: number | null;
   readonly workdir: string | null;
   readonly user: string | null;
   readonly shell: string | null;
@@ -143,6 +146,7 @@ export function nativeRecordMatchesCreation(
     readonly image: string;
     readonly cpus: number;
     readonly memoryMiB: number;
+    readonly tmpMiB: number | null;
     readonly workdir: string | null;
     readonly user: string | null;
     readonly shell: string | null;
@@ -165,6 +169,10 @@ export function nativeRecordMatchesCreation(
     return false;
   }
   if (record.memoryMiB !== requested.memoryMiB) {
+    return false;
+  }
+  // Only compare when the profile explicitly sized /tmp; MSB always injects a default.
+  if (requested.tmpMiB !== null && record.tmpMiB !== requested.tmpMiB) {
     return false;
   }
   if (record.workdir !== requested.workdir) {
@@ -241,6 +249,7 @@ function creationFingerprint(projection: SandboxImmutableCreation): string {
     image: projection.image,
     cpus: projection.cpus,
     memoryMiB: projection.memoryMiB,
+    ...(projection.tmpMiB !== null ? { tmpMiB: projection.tmpMiB } : {}),
     workdir: projection.workdir,
     user: projection.user,
     shell: projection.shell,

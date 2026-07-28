@@ -161,13 +161,44 @@ profiles:
     image: alpine:3.20
     cpus: 1
     memory: 512MiB
+    tmp: 2GiB
     workdir: /root
     maxDuration: 1h
     idleTimeout: 10m
 `);
     expect(config.profiles["default"]?.memoryMiB).toBe(512);
+    expect(config.profiles["default"]?.tmpMiB).toBe(2048);
     expect(config.profiles["default"]?.maxDurationSecs).toBe(3600);
     expect(config.profiles["default"]?.idleTimeoutSecs).toBe(600);
+  });
+
+  it("rejects mounts and volumes at reserved /tmp", () => {
+    const mountResult = tryLoadProjectConfigFromYaml(`
+version: 1
+project: demo
+profiles:
+  default:
+    image: alpine:3.20
+    mounts:
+      - path: ./x
+        mount: /tmp
+`);
+    expect(mountResult.ok).toBe(false);
+
+    const volumeResult = tryLoadProjectConfigFromYaml(`
+version: 1
+project: demo
+volumes:
+  data:
+    size: 1GiB
+profiles:
+  default:
+    image: alpine:3.20
+    volumes:
+      - volume: data
+        path: /tmp
+`);
+    expect(volumeResult.ok).toBe(false);
   });
 
   it("rejects unknown YAML fields and accumulates issues", () => {

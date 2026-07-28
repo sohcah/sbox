@@ -251,6 +251,8 @@ export const runtimeSecretConfigSchema = z.strictObject({
 const profileCommonFields = {
   cpus: z.number().int().positive().optional(),
   memoryMiB: z.number().int().positive().optional(),
+  /** Guest `/tmp` tmpfs size in MiB (Microsandbox `.tmpfs().size`). */
+  tmpMiB: z.number().int().positive().optional(),
   workdir: absoluteGuestPathSchema.optional(),
   user: z.string().min(1).optional(),
   shell: absoluteGuestPathSchema.optional(),
@@ -376,6 +378,8 @@ export const yamlProfileInputSchema = z
     cpus: z.number().int().positive().optional(),
     memoryMiB: z.number().int().positive().optional(),
     memory: binarySizeSchema.optional(),
+    tmpMiB: z.number().int().positive().optional(),
+    tmp: binarySizeSchema.optional(),
     workdir: absoluteGuestPathSchema.optional(),
     user: z.string().min(1).optional(),
     shell: absoluteGuestPathSchema.optional(),
@@ -423,6 +427,13 @@ export const yamlProjectInputSchema = z
           code: "custom",
           path: ["profiles", name, "memory"],
           message: 'Specify only one of "memory" or "memoryMiB".',
+        });
+      }
+      if (profile.tmp !== undefined && profile.tmpMiB !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["profiles", name, "tmp"],
+          message: 'Specify only one of "tmp" or "tmpMiB".',
         });
       }
       if (profile.maxDuration !== undefined && profile.maxDurationSecs !== undefined) {
@@ -489,6 +500,13 @@ function refineProfileVolumeAttachments(
         });
       }
       seenVolumes.add(attachment.volume);
+      if (attachment.path === "/tmp") {
+        ctx.addIssue({
+          code: "custom",
+          path: [...pathPrefix, "path"],
+          message: 'Guest path "/tmp" is reserved for the profile tmpfs size (tmp / tmpMiB).',
+        });
+      }
       if (seenPaths.has(attachment.path)) {
         ctx.addIssue({
           code: "custom",
@@ -529,6 +547,13 @@ function refineProfileHostMounts(
     for (let i = 0; i < mounts.length; i += 1) {
       const entry = mounts[i]!;
       const pathPrefix = ["profiles", profileName, "mounts", i] as const;
+      if (entry.mount === "/tmp") {
+        ctx.addIssue({
+          code: "custom",
+          path: [...pathPrefix, "mount"],
+          message: 'Guest path "/tmp" is reserved for the profile tmpfs size (tmp / tmpMiB).',
+        });
+      }
       if (seenPaths.has(entry.mount)) {
         ctx.addIssue({
           code: "custom",

@@ -38,6 +38,8 @@ export interface NativeSandboxRecord {
   readonly image: string;
   readonly cpus: number;
   readonly memoryMiB: number;
+  /** Explicit `/tmp` tmpfs size when present in SandboxConfig; otherwise null. */
+  readonly tmpMiB: number | null;
   readonly workdir: string | null;
   readonly user: string | null;
   readonly shell: string | null;
@@ -61,6 +63,8 @@ export interface NativeCreateRequest {
   readonly labels: LabelMap;
   readonly cpus: number;
   readonly memoryMiB: number;
+  /** When non-null, mounts a sized tmpfs at `/tmp` (overrides MSB default). */
+  readonly tmpMiB: number | null;
   readonly workdir: string | null;
   readonly user: string | null;
   readonly shell: string | null;

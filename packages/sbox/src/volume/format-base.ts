@@ -100,6 +100,7 @@ export async function formatAndPublishBase(
       },
       cpus: 1,
       memoryMiB: 512,
+      tmpMiB: null,
       workdir: null,
       user: null,
       shell: null,

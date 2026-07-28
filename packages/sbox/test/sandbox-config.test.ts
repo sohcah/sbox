@@ -136,6 +136,7 @@ describe("immutable creation projection", () => {
       image: "alpine:3.20",
       cpus: PHASE1_DEFAULT_CPUS,
       memoryMiB: PHASE1_DEFAULT_MEMORY_MIB,
+      tmpMiB: null,
       workdir: null,
       user: null,
       shell: null,
@@ -152,6 +153,12 @@ describe("immutable creation projection", () => {
       volumes: [],
       mounts: [],
     });
+  });
+
+  it("projects explicit tmpMiB without changing omitted defaults", () => {
+    const projected = projectCreateRequest({ image: "alpine:3.20", tmpMiB: 2048 });
+    expect(projected.tmpMiB).toBe(2048);
+    expect(projected.memoryMiB).toBe(PHASE1_DEFAULT_MEMORY_MIB);
   });
 
   it("treats omitted request fields as defaults, not wildcards", () => {

@@ -62,6 +62,7 @@ export class MemoryNativeRuntime implements NativeRuntime {
           image: "foreign:latest",
           cpus: PHASE1_DEFAULT_CPUS,
           memoryMiB: PHASE1_DEFAULT_MEMORY_MIB,
+          tmpMiB: null,
           workdir: null,
           user: null,
           shell: null,
@@ -189,7 +190,8 @@ export class MemoryNativeRuntime implements NativeRuntime {
   }
 
   seed(
-    record: Omit<NativeSandboxRecord, "network" | "secrets" | "mounts" | "bindMounts"> & {
+    record: Omit<NativeSandboxRecord, "network" | "secrets" | "mounts" | "bindMounts" | "tmpMiB"> & {
+      readonly tmpMiB?: NativeSandboxRecord["tmpMiB"];
       readonly network?: NativeSandboxRecord["network"];
       readonly secrets?: NativeSandboxRecord["secrets"];
       readonly mounts?: NativeSandboxRecord["mounts"];
@@ -199,6 +201,7 @@ export class MemoryNativeRuntime implements NativeRuntime {
     this.byName.set(record.name, {
       record: cloneRecord({
         ...record,
+        tmpMiB: record.tmpMiB ?? null,
         network: record.network ?? defaultNetworkConfig(),
         secrets: record.secrets ?? [],
         mounts: record.mounts ?? [],
@@ -248,6 +251,7 @@ export class MemoryNativeRuntime implements NativeRuntime {
       image: request.image,
       cpus: request.cpus,
       memoryMiB: request.memoryMiB,
+      tmpMiB: request.tmpMiB,
       workdir: request.workdir,
       user: request.user,
       shell: request.shell,

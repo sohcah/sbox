@@ -87,25 +87,27 @@ describe("uncertain-create immutable matching", () => {
   });
 
   it.each([
-    ["image", { image: "alpine:3.19" }],
-    ["cpus", { cpus: 2 }],
-    ["memoryMiB", { memoryMiB: 1024 }],
-    ["workdir", { workdir: "/work" }],
-    ["user", { user: "root" }],
-    ["shell", { shell: "/bin/bash" }],
-    ["hostname", { hostname: "box" }],
+    ["image", { image: "alpine:3.19" }, {}],
+    ["cpus", { cpus: 2 }, {}],
+    ["memoryMiB", { memoryMiB: 1024 }, {}],
+    ["tmpMiB", { tmpMiB: 1024 }, { tmpMiB: 2048 }],
+    ["workdir", { workdir: "/work" }, {}],
+    ["user", { user: "root" }, {}],
+    ["shell", { shell: "/bin/bash" }, {}],
+    ["hostname", { hostname: "box" }, {}],
   ] as const)(
     "rejects when labels/fingerprint match but native %s differs",
-    async (_label, nativeOverride) => {
+    async (_label, nativeOverride, requestOverrides) => {
       const runtime = new MemoryNativeRuntime();
       const name = nativeSandboxName(identity.project, identity.instance);
       runtime.seed({
         name,
         status: "stopped",
-        labels: matchingLabels(),
+        labels: matchingLabels(requestOverrides),
         image: "alpine:3.20",
         cpus: 1,
         memoryMiB: 512,
+        tmpMiB: null,
         workdir: null,
         user: null,
         shell: null,
@@ -116,7 +118,7 @@ describe("uncertain-create immutable matching", () => {
         ...nativeOverride,
       });
       const host = createLocalHostInternal({ runtime });
-      await expect(host.create(baseRequest())).rejects.toMatchObject({
+      await expect(host.create(baseRequest(requestOverrides))).rejects.toMatchObject({
         code: "ownership_conflict",
       });
     },

@@ -48,7 +48,6 @@ profiles:
       mode: default-deny
       allow:
         - domain: example.com
-          ports: [443]
       publish:
         - guest: 8080
           host: 8080
@@ -80,6 +79,7 @@ directory) is inferred at create from the real path — not a YAML field.
 | `source` | `client` | `client` or `host`. |
 | `readonly` | `true` | Client sources must stay read-only. |
 | `quota` | — | Optional when `readonly: false` (Host writable only). Omit to accept Microsandbox’s protective default. |
+| `followEscapingSymlinks` | `false` | Client mounts only. When packing for a remote target, dereference absolute/escaping symlinks into real file/dir content. Safe relative links inside the mount root stay links. Local binds ignore this (host FS links already work). |
 
 At create, the path must exist as a real file or directory (symlink roots
 rejected). On a remote target, Client paths are staged once onto the serve Host,

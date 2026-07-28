@@ -49,6 +49,7 @@ export function mountsFromLabels(labels: LabelMap | undefined): readonly MountAt
         readonly: record["readonly"],
         kind: kind as MountKind,
         ...(typeof record["quotaMiB"] === "number" ? { quotaMiB: record["quotaMiB"] } : {}),
+        ...(record["followEscapingSymlinks"] === true ? { followEscapingSymlinks: true } : {}),
       });
     }
     return Object.freeze(canonicalMountsFingerprint(out));

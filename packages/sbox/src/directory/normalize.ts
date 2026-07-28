@@ -49,6 +49,12 @@ export function normalizeHostMountConfig(
       message: "Quota is only allowed for writable Host mounts.",
     });
   }
+  if (raw.followEscapingSymlinks === true && source !== "client") {
+    issues.push({
+      path: `${pathPrefix}.followEscapingSymlinks`,
+      message: "followEscapingSymlinks is only allowed for Client-sourced Host mounts.",
+    });
+  }
   let quotaMiB: number | undefined;
   if (raw.quota !== undefined) {
     if (!isBinarySize(raw.quota)) {
@@ -81,6 +87,7 @@ export function normalizeHostMountConfig(
       readonly,
       ...(quotaMiB !== undefined ? { quotaMiB } : {}),
       ...(raw.quota !== undefined ? { quota: raw.quota } : {}),
+      ...(raw.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
     },
   };
 }
@@ -92,6 +99,7 @@ export type RequiredHostMount = {
   readonly readonly: boolean;
   readonly quotaMiB?: number;
   readonly quota?: string;
+  readonly followEscapingSymlinks?: boolean;
 };
 
 /** @deprecated Use normalizeHostMountConfig */

@@ -76,6 +76,7 @@ export function projectCreateRequest(request: {
           readonly: entry.readonly,
           kind: entry.kind,
           ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+          ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
         };
       }),
     ),

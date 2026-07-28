@@ -77,6 +77,12 @@ export function assertHostMounts(
     if (entry.kind !== undefined) {
       assertMountKind(entry.kind, `${prefix}.kind`);
     }
+    if (entry.followEscapingSymlinks === true && entry.source !== "client") {
+      throw SboxError.validation(
+        "followEscapingSymlinks is only allowed for Client-sourced Host mounts.",
+        { details: { path: `${prefix}.followEscapingSymlinks` } },
+      );
+    }
   }
 }
 

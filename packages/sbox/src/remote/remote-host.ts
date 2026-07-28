@@ -925,6 +925,7 @@ function stripBindHostPaths(request: HostCreateRequest): HostCreateRequest {
       readonly: entry.readonly,
       ...(entry.kind !== undefined ? { kind: entry.kind } : {}),
       ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+      ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
     })),
   };
 }

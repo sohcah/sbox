@@ -45,6 +45,11 @@ export interface HostMountConfig {
   readonly readonly?: boolean;
   /** Binary size string; optional for writable Host mounts (MSB protective default). */
   readonly quota?: string;
+  /**
+   * Client mounts only. When true, remote packing dereferences escaping/absolute
+   * symlinks into real file/dir content. Default false.
+   */
+  readonly followEscapingSymlinks?: boolean;
 }
 
 /** @deprecated Use HostMountConfig */
@@ -57,6 +62,7 @@ export interface SafeHostMount {
   readonly source: "client" | "host";
   readonly readonly: boolean;
   readonly quota?: string;
+  readonly followEscapingSymlinks?: boolean;
 }
 
 /** @deprecated Use SafeHostMount */

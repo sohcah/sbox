@@ -55,6 +55,7 @@ const hostMountSchema = z
     source: z.enum(["client", "host"]).optional(),
     readonly: z.boolean().optional(),
     quota: binarySizeSchema.optional(),
+    followEscapingSymlinks: z.boolean().optional(),
   })
   .superRefine((value, ctx) => {
     const source = value.source ?? "client";
@@ -81,6 +82,13 @@ const hostMountSchema = z
         code: "custom",
         path: ["quota"],
         message: "Quota is only allowed for writable Host mounts.",
+      });
+    }
+    if (value.followEscapingSymlinks === true && source !== "client") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["followEscapingSymlinks"],
+        message: "followEscapingSymlinks is only allowed for Client-sourced Host mounts.",
       });
     }
   });

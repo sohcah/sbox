@@ -132,6 +132,7 @@ type YamlProfileInput = {
     readonly source?: "client" | "host";
     readonly readonly?: boolean;
     readonly quota?: string;
+    readonly followEscapingSymlinks?: boolean;
   }[];
 };
 
@@ -208,6 +209,7 @@ function normalizeYamlProjectInput(input: {
               ...(entry.source !== undefined ? { source: entry.source } : {}),
               ...(entry.readonly !== undefined ? { readonly: entry.readonly } : {}),
               ...(entry.quota !== undefined ? { quota: entry.quota } : {}),
+              ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
             })),
           }
         : {}),
@@ -350,6 +352,7 @@ export function toSafeProjectConfig(config: ProjectConfig): SafeProjectConfig {
                 source: entry.source ?? "client",
                 readonly: entry.readonly ?? true,
                 ...(entry.quota !== undefined ? { quota: entry.quota } : {}),
+                ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
               }),
             ),
           }
@@ -571,6 +574,9 @@ function freezeProjectConfig(config: {
                   ...(entry.source !== undefined ? { source: entry.source } : {}),
                   ...(entry.readonly !== undefined ? { readonly: entry.readonly } : {}),
                   ...(entry.quota !== undefined ? { quota: entry.quota } : {}),
+                  ...(entry.followEscapingSymlinks === true
+                    ? { followEscapingSymlinks: true }
+                    : {}),
                 }),
               ),
             ),

@@ -11,21 +11,23 @@ loopback only. There is no unrestricted default.
 network:
   mode: default-deny   # or disabled
   allow:
-    - domain: registry.npmjs.org
-      ports: [443]
-    - suffix: .pkg.dev
-      ports: [443]
+    - domain: registry.npmjs.org   # defaults: TCP 80 + 443
+    - suffix: .pkg.dev             # same defaults
     - ip: 1.2.3.4
-      ports: [80, 443]
+      ports: [80, 443]             # required for ip/cidr (no default)
     - cidr: 10.0.0.0/8
       ports: [443]
-      protocols: [tcp]   # optional; tcp/udp
+      protocols: [tcp]             # optional; domain/suffix default to [tcp]
   publish:
     - guest: 3000
       host: 3000         # omit / 0 only when dynamicHostPorts capability is true
       protocol: tcp
       bind: 127.0.0.1    # default loopback
 ```
+
+Domain and suffix rules omit `ports`/`protocols` to get TCP 80 and 443.
+IP and CIDR rules have no port default — omit `ports` only when you intend
+all ports for that destination.
 
 ## Secrets vs network
 

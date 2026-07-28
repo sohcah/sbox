@@ -15,4 +15,3 @@ profiles:
       mode: default-deny
       allow:
         - domain: example.com
-          ports: [443]

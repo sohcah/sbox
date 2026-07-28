@@ -283,6 +283,7 @@ async function resolveProfileMounts(
       readonly: entry.readonly,
       ...(kind !== undefined ? { kind } : {}),
       ...(quotaMiB !== undefined ? { quotaMiB } : {}),
+      ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
     });
   }
   if (issues.length > 0) {
@@ -661,12 +662,15 @@ function reconcileMountKindsForDrift(
     readonly readonly: boolean;
     readonly kind?: MountKind;
     readonly quotaMiB?: number;
+    readonly followEscapingSymlinks?: boolean;
   }[],
   inspected: readonly MountAttachmentSpec[],
 ): readonly MountAttachmentSpec[] {
   return Object.freeze(
     canonicalMountsFingerprint(
       desired.map((entry) => {
+        const follow =
+          entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true as const } : {};
         if (entry.kind === "file" || entry.kind === "directory") {
           return {
             source: entry.source,
@@ -675,6 +679,7 @@ function reconcileMountKindsForDrift(
             readonly: entry.readonly,
             kind: entry.kind,
             ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+            ...follow,
           };
         }
         const match = inspected.find(
@@ -695,6 +700,7 @@ function reconcileMountKindsForDrift(
           readonly: entry.readonly,
           kind: match.kind,
           ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+          ...follow,
         };
       }),
     ),

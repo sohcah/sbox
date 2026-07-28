@@ -16,6 +16,11 @@ export interface MountAttachmentSpec {
   readonly kind: MountKind;
   /** Present only when writable and explicitly set. */
   readonly quotaMiB?: number;
+  /**
+   * When true, Client-mount packing dereferences escaping/absolute symlinks.
+   * Omitted when false.
+   */
+  readonly followEscapingSymlinks?: boolean;
 }
 
 /**
@@ -31,6 +36,7 @@ export interface HostMount {
   readonly readonly: boolean;
   readonly kind?: MountKind;
   readonly quotaMiB?: number;
+  readonly followEscapingSymlinks?: boolean;
   readonly bindHostPath?: string;
 }
 
@@ -46,6 +52,7 @@ export function canonicalMountsFingerprint(
         readonly: entry.readonly,
         kind: entry.kind,
         ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+        ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
       }),
     )
     .toSorted((a, b) => {

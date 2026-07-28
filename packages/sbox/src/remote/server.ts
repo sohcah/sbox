@@ -248,6 +248,7 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
           readonly: entry.readonly,
           ...(kind !== undefined ? { kind } : {}),
           ...(entry.quotaMiB !== undefined ? { quotaMiB: entry.quotaMiB } : {}),
+          ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
         });
       }
       assertHostMounts(mountsIn, body.volumes);

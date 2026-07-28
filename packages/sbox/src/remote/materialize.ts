@@ -10,7 +10,9 @@ import {
   readFile,
   readlink,
   readdir,
+  realpath,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -23,15 +25,25 @@ import {
   type TransferArchive,
   type TransferEntry,
 } from "../transfer/archive.js";
-import { assertRelativeTransferPath } from "../transfer/paths.js";
+import { assertRelativeTransferPath, isSafeSymlinkTarget } from "../transfer/paths.js";
+
+export type PackHostPathOptions = {
+  readonly signal?: AbortSignal;
+  /**
+   * When true, absolute or transfer-root-escaping symlinks are dereferenced and
+   * their target content is packed (files/dirs) instead of preserved as links.
+   * Safe relative links inside the root are still preserved.
+   */
+  readonly followEscapingSymlinks?: boolean;
+};
 
 export async function packHostPath(
   hostPath: string,
-  options?: { readonly signal?: AbortSignal },
+  options?: PackHostPathOptions,
 ): Promise<TransferArchive> {
   throwIfAborted(options?.signal);
   const root = resolve(hostPath);
-  const stat = await lstat(root).catch((error: NodeJS.ErrnoException) => {
+  const rootStat = await lstat(root).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") {
       throw SboxError.notFound("Host path was not found.", { details: { path: "hostPath" } });
     }
@@ -42,18 +54,25 @@ export async function packHostPath(
   });
 
   const entries: TransferEntry[] = [];
-  if (stat.isSymbolicLink()) {
-    const target = await readlink(root);
-    entries.push({ kind: "symlink", path: "payload", target });
-  } else if (stat.isFile()) {
+  const follow = options?.followEscapingSymlinks === true;
+  const visited = new Set<string>();
+
+  if (rootStat.isSymbolicLink()) {
+    if (follow) {
+      await packFollowedSymlink(root, "payload", entries, options?.signal, visited);
+    } else {
+      const target = await readlink(root);
+      entries.push({ kind: "symlink", path: "payload", target });
+    }
+  } else if (rootStat.isFile()) {
     entries.push({
       kind: "file",
       path: "payload",
-      mode: permissionBits(stat.mode),
+      mode: permissionBits(rootStat.mode),
       data: new Uint8Array(await readFile(root)),
     });
-  } else if (stat.isDirectory()) {
-    await walkDir(root, "", entries, options?.signal);
+  } else if (rootStat.isDirectory()) {
+    await walkRootDir(root, entries, options?.signal, follow, visited);
   } else {
     throw SboxError.validation("Host path kind is not supported for remote transfer.", {
       details: { path: "hostPath" },
@@ -62,48 +81,154 @@ export async function packHostPath(
   return createTransferArchive(entries);
 }
 
-async function walkDir(
+async function walkRootDir(
   root: string,
-  rel: string,
   entries: TransferEntry[],
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  followEscapingSymlinks: boolean,
+  visited: Set<string>,
 ): Promise<void> {
   throwIfAborted(signal);
-  const abs = rel === "" ? root : join(root, ...rel.split("/"));
-  const names = await readdir(abs);
-  if (rel !== "") {
-    const st = await lstat(abs);
-    entries.push({
-      kind: "directory",
-      path: assertRelativeTransferPath(rel, "archive member path"),
-      mode: permissionBits(st.mode),
-    });
-  }
+  const names = await readdir(root);
   for (const name of names) {
-    const childRel = rel === "" ? name : `${rel}/${name}`;
-    const childAbs = join(root, ...childRel.split("/"));
-    const st = await lstat(childAbs);
-    if (st.isSymbolicLink()) {
+    await packPathEntry(join(root, name), name, entries, signal, followEscapingSymlinks, visited);
+  }
+}
+
+/**
+ * Walk an already-resolved directory whose content is placed at `archiveRel`
+ * (used after following an escaping symlink to a directory).
+ */
+async function walkResolvedDir(
+  realDir: string,
+  archiveRel: string,
+  entries: TransferEntry[],
+  signal: AbortSignal | undefined,
+  followEscapingSymlinks: boolean,
+  visited: Set<string>,
+): Promise<void> {
+  throwIfAborted(signal);
+  const names = await readdir(realDir);
+  for (const name of names) {
+    const childAbs = join(realDir, name);
+    const childRel = `${archiveRel}/${name}`;
+    await packPathEntry(childAbs, childRel, entries, signal, followEscapingSymlinks, visited);
+  }
+}
+
+async function packPathEntry(
+  absPath: string,
+  archiveRel: string,
+  entries: TransferEntry[],
+  signal: AbortSignal | undefined,
+  followEscapingSymlinks: boolean,
+  visited: Set<string>,
+): Promise<void> {
+  throwIfAborted(signal);
+  const st = await lstat(absPath);
+  if (st.isSymbolicLink()) {
+    const target = await readlink(absPath);
+    const linkDir = archiveRel.includes("/")
+      ? archiveRel.slice(0, archiveRel.lastIndexOf("/"))
+      : "";
+    const linkDirPosix = linkDir === "" ? "/" : `/${linkDir}`;
+    if (isSafeSymlinkTarget(target, linkDirPosix, "/")) {
       entries.push({
         kind: "symlink",
-        path: assertRelativeTransferPath(childRel, "archive member path"),
-        target: await readlink(childAbs),
+        path: assertRelativeTransferPath(archiveRel, "archive member path"),
+        target,
       });
-    } else if (st.isDirectory()) {
-      await walkDir(root, childRel, entries, signal);
-    } else if (st.isFile()) {
-      entries.push({
-        kind: "file",
-        path: assertRelativeTransferPath(childRel, "archive member path"),
-        mode: permissionBits(st.mode),
-        data: new Uint8Array(await readFile(childAbs)),
-      });
-    } else {
-      throw SboxError.validation("Special files are not supported in remote transfer.", {
-        details: { path: childRel },
-      });
+      return;
     }
+    if (followEscapingSymlinks) {
+      await packFollowedSymlink(absPath, archiveRel, entries, signal, visited);
+      return;
+    }
+    entries.push({
+      kind: "symlink",
+      path: assertRelativeTransferPath(archiveRel, "archive member path"),
+      target,
+    });
+    return;
   }
+  if (st.isDirectory()) {
+    // walkDir expects join(root, rel) === absPath; use absPath as root with empty-relative walk
+    // via walkResolvedDir after recording the directory entry.
+    entries.push({
+      kind: "directory",
+      path: assertRelativeTransferPath(archiveRel, "archive member path"),
+      mode: permissionBits(st.mode),
+    });
+    await walkResolvedDir(absPath, archiveRel, entries, signal, followEscapingSymlinks, visited);
+    return;
+  }
+  if (st.isFile()) {
+    entries.push({
+      kind: "file",
+      path: assertRelativeTransferPath(archiveRel, "archive member path"),
+      mode: permissionBits(st.mode),
+      data: new Uint8Array(await readFile(absPath)),
+    });
+    return;
+  }
+  throw SboxError.validation("Special files are not supported in remote transfer.", {
+    details: { path: archiveRel },
+  });
+}
+
+async function packFollowedSymlink(
+  linkPath: string,
+  archiveRel: string,
+  entries: TransferEntry[],
+  signal: AbortSignal | undefined,
+  visited: Set<string>,
+): Promise<void> {
+  throwIfAborted(signal);
+  let resolved: string;
+  try {
+    resolved = await realpath(linkPath);
+  } catch (error) {
+    throw SboxError.validation("Escaping symlink target could not be resolved.", {
+      cause: error,
+      details: { path: archiveRel },
+    });
+  }
+  if (visited.has(resolved)) {
+    throw SboxError.validation("Symlink cycle detected while following escaping links.", {
+      details: { path: archiveRel },
+    });
+  }
+  visited.add(resolved);
+
+  const st = await stat(linkPath).catch((error: NodeJS.ErrnoException) => {
+    throw SboxError.validation("Escaping symlink target is not readable.", {
+      cause: error,
+      details: { path: archiveRel },
+    });
+  });
+
+  if (st.isFile()) {
+    entries.push({
+      kind: "file",
+      path: assertRelativeTransferPath(archiveRel, "archive member path"),
+      mode: permissionBits(st.mode),
+      data: new Uint8Array(await readFile(resolved)),
+    });
+    return;
+  }
+  if (st.isDirectory()) {
+    entries.push({
+      kind: "directory",
+      path: assertRelativeTransferPath(archiveRel, "archive member path"),
+      mode: permissionBits(st.mode),
+    });
+    // Nested escaping links under the followed tree are also dereferenced.
+    await walkResolvedDir(resolved, archiveRel, entries, signal, true, visited);
+    return;
+  }
+  throw SboxError.validation("Escaping symlink target kind is not supported for transfer.", {
+    details: { path: archiveRel },
+  });
 }
 
 export async function materializeArchive(

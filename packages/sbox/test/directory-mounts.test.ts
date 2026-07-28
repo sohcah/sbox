@@ -599,6 +599,20 @@ describe("Host mounts over RemoteHost", () => {
     await remote.remove(identity);
   });
 
+  it("rejects followEscapingSymlinks on Host-sourced mounts", () => {
+    expect(() =>
+      assertHostMounts([
+        {
+          source: "host",
+          path: "/var/data",
+          mount: "/data",
+          readonly: true,
+          followEscapingSymlinks: true,
+        },
+      ]),
+    ).toThrow(/followEscapingSymlinks/i);
+  });
+
   it("rejects symlink client roots before packing", async () => {
     const root = await mkdtemp(join(tmpdir(), "sbox-dir-remote-sym-"));
     dirs.push(root);
@@ -614,6 +628,57 @@ describe("Host mounts over RemoteHost", () => {
       message: expect.stringMatching(/symlink/i),
     });
   });
+
+  it.skipIf(process.platform === "win32")(
+    "followEscapingSymlinks dereferences escaping links when packing Client mounts",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "sbox-follow-esc-"));
+      dirs.push(root);
+      const outside = join(root, "outside");
+      const tree = join(root, "tree");
+      await mkdir(outside);
+      await mkdir(tree);
+      await writeFile(join(outside, "secret.txt"), "followed", "utf8");
+      await symlink(join("..", "outside"), join(tree, "link"));
+      await symlink("secret.txt", join(outside, "inner"));
+
+      await expect(
+        packClientMountArchive([
+          { source: "client", path: tree, mount: "/skills", readonly: true, kind: "directory" },
+        ]),
+      ).rejects.toMatchObject({
+        code: "validation",
+        message: expect.stringMatching(/escapes the transfer root/i),
+      });
+
+      const packed = await packClientMountArchive([
+        {
+          source: "client",
+          path: tree,
+          mount: "/skills",
+          readonly: true,
+          kind: "directory",
+          followEscapingSymlinks: true,
+        },
+      ]);
+      const byPath = Object.fromEntries(packed.archive.entries.map((e) => [e.path, e]));
+      expect(byPath["0/link"]?.kind).toBe("directory");
+      expect(byPath["0/link/secret.txt"]).toMatchObject({
+        kind: "file",
+        data: expect.any(Uint8Array),
+      });
+      expect(
+        Buffer.from((byPath["0/link/secret.txt"] as { data: Uint8Array }).data).toString(),
+      ).toBe("followed");
+      // Relative link inside the followed tree stays a symlink when safe under that subtree…
+      // …but relative to the mount archive root `inner` -> secret.txt is safe under 0/link/.
+      expect(byPath["0/link/inner"]).toEqual({
+        kind: "symlink",
+        path: "0/link/inner",
+        target: "secret.txt",
+      });
+    },
+  );
 
   it("rejects client-supplied bindHostPath combinations that violate invariants", async () => {
     const fake = new FakeHost();

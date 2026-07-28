@@ -167,10 +167,10 @@ export async function packClientMountArchive(
       );
     }
     resolved.push({ ...entry, kind });
-    const packed = await packHostPath(
-      entry.path,
-      options?.signal !== undefined ? { signal: options.signal } : {},
-    );
+    const packed = await packHostPath(entry.path, {
+      ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+      ...(entry.followEscapingSymlinks === true ? { followEscapingSymlinks: true } : {}),
+    });
     for (const member of packed.entries) {
       entries.push({
         ...member,

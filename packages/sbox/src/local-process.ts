@@ -216,6 +216,7 @@ export interface SdkNativeProcessHandle {
     | { kind: "stderr"; data: Uint8Array }
     | { kind: "exited"; code: number }
     | null
+    | undefined
   >;
   takeStdin(): Promise<{
     write(data: Uint8Array | string): Promise<void>;
@@ -403,7 +404,10 @@ class SdkProcessSession implements ProcessSession {
           break;
         }
         const raw = await this.handle.recv();
-        if (raw === null) {
+        // Microsandbox's JS wrapper treats only `=== null` as EOS; NAPI may
+        // surface Option::None as `undefined`, which then falls through
+        // normalizeExecEvent with no return value.
+        if (raw == null) {
           break;
         }
         if (this.settled) {

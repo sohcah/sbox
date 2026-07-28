@@ -108,6 +108,35 @@ describe("BoundedAsyncQueue", () => {
 });
 
 describe("SdkProcessSession cleanup and backpressure", () => {
+  it("treats undefined recv as end-of-stream (NAPI Option::None quirk)", async () => {
+    let killCount = 0;
+    let disposeCount = 0;
+    const handle: SdkNativeProcessHandle & { killCount: number; disposeCount: number } = {
+      get killCount() {
+        return killCount;
+      },
+      get disposeCount() {
+        return disposeCount;
+      },
+      recv: async () => undefined,
+      takeStdin: async () => null,
+      signal: async () => undefined,
+      kill: async () => {
+        killCount += 1;
+      },
+      [Symbol.asyncDispose]: async () => {
+        disposeCount += 1;
+      },
+    };
+    const session = createSdkProcessSession(handle);
+    await expect(session.wait()).rejects.toMatchObject({
+      code: "internal",
+      message: expect.stringMatching(/without exit/i),
+    });
+    await session[Symbol.asyncDispose]();
+    expect(disposeCount).toBe(1);
+  });
+
   it("settles promptly when caller stdin next() never resolves", async () => {
     const hanging = hangingIterable();
     const handle = mockProcessHandle([

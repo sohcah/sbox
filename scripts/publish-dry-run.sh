@@ -37,7 +37,7 @@ sandcastle_manifest="$(tar -xzOf "$sandcastle_tgz" package/package.json)"
 printf '%s\n' "$sbox_manifest" | node --input-type=module -e '
 const fs = await import("node:fs");
 const pkg = JSON.parse(fs.readFileSync(0, "utf8"));
-if (pkg.version !== "0.2.4") throw new Error(`unexpected sbox version: ${pkg.version}`);
+if (pkg.version !== "0.2.5") throw new Error(`unexpected sbox version: ${pkg.version}`);
 if (JSON.stringify(pkg).includes("workspace:")) {
   throw new Error("sbox packed manifest still contains workspace:");
 }
@@ -50,8 +50,8 @@ const dep = pkg.dependencies?.["@sohcah/sbox"];
 if (typeof dep !== "string" || dep.includes("workspace:")) {
   throw new Error(`sandcastle dependency not rewritten: ${dep}`);
 }
-if (!/^\^0\.2\.4$/.test(dep)) {
-  throw new Error(`expected @sohcah/sbox ^0.2.4, got ${dep}`);
+if (!/^\^0\.2\.5$/.test(dep)) {
+  throw new Error(`expected @sohcah/sbox ^0.2.5, got ${dep}`);
 }
 console.log("sandcastle packed ok", pkg.name, pkg.version, "depends on", dep);
 '

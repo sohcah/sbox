@@ -33,6 +33,8 @@ profiles:
     shell: /bin/sh
     # Optional: size guest /tmp tmpfs (default is Microsandbox's ~512MiB)
     # tmp: 2GiB
+    # Optional: size OCI writable overlay upper (default is Microsandbox's 4GiB)
+    # root: 16GiB
     volumes:
       - volume: cache
         path: /cache
@@ -76,6 +78,16 @@ or external refs (`env` / `file` / `invocation`).
 
 Omit both fields to keep Microsandbox’s implicit `/tmp`. Guest path `/tmp` is
 reserved — do not attach volumes or Host mounts there.
+
+## OCI root overlay size
+
+| Field | Default | Notes |
+| --- | --- | --- |
+| `root` | MSB default (4GiB / 4096 MiB) | Binary size sugar (`16GiB`). Maps to Microsandbox `.imageWith(i => i.oci(image).upperSize(…))`. |
+| `rootMiB` | — | Typed alternate; mutually exclusive with `root`. |
+
+Omit both fields to keep Microsandbox’s default OCI writable overlay upper size.
+When omitted, sbox does not call `upperSize` at create time.
 
 ## Host mounts
 

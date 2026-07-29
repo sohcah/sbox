@@ -45,6 +45,8 @@ export interface HostCreateRequest {
   readonly memoryMiB?: number;
   /** Guest `/tmp` tmpfs size in mebibytes. Omit for Microsandbox default. */
   readonly tmpMiB?: number;
+  /** OCI writable overlay upper size in mebibytes. Omit for Microsandbox default. */
+  readonly rootMiB?: number;
   readonly workdir?: string;
   readonly user?: string;
   readonly shell?: string;
@@ -95,6 +97,8 @@ export interface SandboxCreationSettings {
   readonly memoryMiB: number;
   /** Guest `/tmp` tmpfs size when explicitly configured; omit when MSB default. */
   readonly tmpMiB?: number;
+  /** OCI writable overlay upper size when present on the native record; omit when absent. */
+  readonly rootMiB?: number;
   readonly workdir?: string;
   readonly user?: string;
   readonly shell?: string;

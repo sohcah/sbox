@@ -190,6 +190,7 @@ class LocalHost implements Host {
           cpus: projected.cpus,
           memoryMiB: projected.memoryMiB,
           tmpMiB: projected.tmpMiB,
+          rootMiB: projected.rootMiB,
           workdir: projected.workdir,
           user: projected.user,
           shell: projected.shell,
@@ -673,6 +674,7 @@ class LocalHost implements Host {
             cpus: projected.cpus,
             memoryMiB: projected.memoryMiB,
             tmpMiB: projected.tmpMiB,
+            rootMiB: projected.rootMiB,
             workdir: projected.workdir,
             user: projected.user,
             shell: projected.shell,
@@ -1128,6 +1130,7 @@ class LocalHost implements Host {
       cpus: record.cpus,
       memoryMiB: record.memoryMiB,
       ...(record.tmpMiB !== null ? { tmpMiB: record.tmpMiB } : {}),
+      ...(record.rootMiB !== null ? { rootMiB: record.rootMiB } : {}),
       ...(record.workdir !== null ? { workdir: record.workdir } : {}),
       ...(record.user !== null ? { user: record.user } : {}),
       ...(record.shell !== null ? { shell: record.shell } : {}),
@@ -1268,6 +1271,14 @@ class LocalHost implements Host {
     if (request.tmpMiB !== undefined && (!Number.isInteger(request.tmpMiB) || request.tmpMiB < 1)) {
       throw SboxError.validation("Sandbox tmpMiB must be a positive integer.", {
         details: { path: "tmpMiB" },
+      });
+    }
+    if (
+      request.rootMiB !== undefined &&
+      (!Number.isInteger(request.rootMiB) || request.rootMiB < 1)
+    ) {
+      throw SboxError.validation("Sandbox rootMiB must be a positive integer.", {
+        details: { path: "rootMiB" },
       });
     }
     if (

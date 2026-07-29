@@ -396,6 +396,7 @@ export function profileToCreateRequest(
     ...(profile.cpus !== undefined ? { cpus: profile.cpus } : {}),
     ...(profile.memoryMiB !== undefined ? { memoryMiB: profile.memoryMiB } : {}),
     ...(profile.tmpMiB !== undefined ? { tmpMiB: profile.tmpMiB } : {}),
+    ...(profile.rootMiB !== undefined ? { rootMiB: profile.rootMiB } : {}),
     ...(profile.workdir !== undefined ? { workdir: profile.workdir } : {}),
     ...(profile.user !== undefined ? { user: profile.user } : {}),
     ...(profile.shell !== undefined ? { shell: profile.shell } : {}),
@@ -561,6 +562,7 @@ export function reportCreationDrift(
     cpus: inspection.creation.cpus,
     memoryMiB: inspection.creation.memoryMiB,
     ...(inspection.creation.tmpMiB !== undefined ? { tmpMiB: inspection.creation.tmpMiB } : {}),
+    ...(inspection.creation.rootMiB !== undefined ? { rootMiB: inspection.creation.rootMiB } : {}),
     ...(inspection.creation.workdir !== undefined ? { workdir: inspection.creation.workdir } : {}),
     ...(inspection.creation.user !== undefined ? { user: inspection.creation.user } : {}),
     ...(inspection.creation.shell !== undefined ? { shell: inspection.creation.shell } : {}),
@@ -616,6 +618,10 @@ export function reportCreationDrift(
     }
     // Microsandbox always injects a default /tmp tmpfs; only explicit sizes drift.
     if (field === "tmpMiB" && expected.tmpMiB == null) {
+      return false;
+    }
+    // Microsandbox always persists OCI upperSizeMib; only explicit sizes drift.
+    if (field === "rootMiB" && expected.rootMiB == null) {
       return false;
     }
     return true;

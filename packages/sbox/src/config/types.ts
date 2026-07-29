@@ -104,6 +104,8 @@ export interface ProfileCommon {
   readonly memoryMiB?: number;
   /** Guest `/tmp` tmpfs size in MiB. Omit to keep Microsandbox's default. */
   readonly tmpMiB?: number;
+  /** OCI writable overlay upper size in MiB. Omit to keep Microsandbox's default. */
+  readonly rootMiB?: number;
   readonly workdir?: string;
   readonly user?: string;
   readonly shell?: string;
@@ -201,6 +203,7 @@ export interface SafeProjectConfig {
         readonly cpus?: number;
         readonly memoryMiB?: number;
         readonly tmpMiB?: number;
+        readonly rootMiB?: number;
         readonly workdir?: string;
         readonly user?: string;
         readonly shell?: string;

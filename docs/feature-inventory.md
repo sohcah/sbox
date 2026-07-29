@@ -6,7 +6,7 @@ a **bounded helper** in `sbox`, or a **deliberate exclusion** (`docs/non-goals.m
 | Behavior | Kind | Notes |
 | --- | --- | --- |
 | Project/user YAML load | Helper | Typed model primary; upward discovery |
-| Profile create settings | Helper → delegation | Curated subset only |
+| Profile create settings | Helper → delegation | Curated subset only; includes `tmp`/`tmpMiB` and `root`/`rootMiB` |
 | Deterministic native names / labels | Helper | Hash + reserved keys |
 | Lifecycle create/get/list/inspect/start/stop/remove | Delegation | Via Host |
 | `up` narrow reconcile | Helper | No drift repair |

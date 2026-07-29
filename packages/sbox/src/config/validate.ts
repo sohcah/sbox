@@ -111,6 +111,8 @@ type YamlProfileInput = {
   readonly memory?: string;
   readonly tmpMiB?: number;
   readonly tmp?: string;
+  readonly rootMiB?: number;
+  readonly root?: string;
   readonly workdir?: string;
   readonly user?: string;
   readonly shell?: string;
@@ -161,6 +163,11 @@ function normalizeYamlProjectInput(input: {
       (profile.tmp !== undefined
         ? parseBinarySizeToMiB(profile.tmp, `profiles.${name}.tmp`)
         : undefined);
+    const rootMiB =
+      profile.rootMiB ??
+      (profile.root !== undefined
+        ? parseBinarySizeToMiB(profile.root, `profiles.${name}.root`)
+        : undefined);
     const maxDurationSecs =
       profile.maxDurationSecs !== undefined
         ? profile.maxDurationSecs
@@ -193,6 +200,7 @@ function normalizeYamlProjectInput(input: {
       ...(profile.cpus !== undefined ? { cpus: profile.cpus } : {}),
       ...(memoryMiB !== undefined ? { memoryMiB } : {}),
       ...(tmpMiB !== undefined ? { tmpMiB } : {}),
+      ...(rootMiB !== undefined ? { rootMiB } : {}),
       ...(profile.workdir !== undefined ? { workdir: profile.workdir } : {}),
       ...(profile.user !== undefined ? { user: profile.user } : {}),
       ...(profile.shell !== undefined ? { shell: profile.shell } : {}),
@@ -324,6 +332,7 @@ export function toSafeProjectConfig(config: ProjectConfig): SafeProjectConfig {
       ...(profile.cpus !== undefined ? { cpus: profile.cpus } : {}),
       ...(profile.memoryMiB !== undefined ? { memoryMiB: profile.memoryMiB } : {}),
       ...(profile.tmpMiB !== undefined ? { tmpMiB: profile.tmpMiB } : {}),
+      ...(profile.rootMiB !== undefined ? { rootMiB: profile.rootMiB } : {}),
       ...(profile.workdir !== undefined ? { workdir: profile.workdir } : {}),
       ...(profile.user !== undefined ? { user: profile.user } : {}),
       ...(profile.shell !== undefined ? { shell: profile.shell } : {}),

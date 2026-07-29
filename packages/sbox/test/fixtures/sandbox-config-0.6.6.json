@@ -2,7 +2,8 @@
   "name": "cfg-probe-full",
   "image": {
     "Oci": {
-      "reference": "alpine:3.20"
+      "reference": "alpine:3.20",
+      "upperSizeMib": 4096
     }
   },
   "resources": {

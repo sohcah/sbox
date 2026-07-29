@@ -253,6 +253,8 @@ const profileCommonFields = {
   memoryMiB: z.number().int().positive().optional(),
   /** Guest `/tmp` tmpfs size in MiB (Microsandbox `.tmpfs().size`). */
   tmpMiB: z.number().int().positive().optional(),
+  /** OCI writable overlay upper size in MiB (Microsandbox `.oci(…).upperSize`). */
+  rootMiB: z.number().int().positive().optional(),
   workdir: absoluteGuestPathSchema.optional(),
   user: z.string().min(1).optional(),
   shell: absoluteGuestPathSchema.optional(),
@@ -380,6 +382,8 @@ export const yamlProfileInputSchema = z
     memory: binarySizeSchema.optional(),
     tmpMiB: z.number().int().positive().optional(),
     tmp: binarySizeSchema.optional(),
+    rootMiB: z.number().int().positive().optional(),
+    root: binarySizeSchema.optional(),
     workdir: absoluteGuestPathSchema.optional(),
     user: z.string().min(1).optional(),
     shell: absoluteGuestPathSchema.optional(),
@@ -434,6 +438,13 @@ export const yamlProjectInputSchema = z
           code: "custom",
           path: ["profiles", name, "tmp"],
           message: 'Specify only one of "tmp" or "tmpMiB".',
+        });
+      }
+      if (profile.root !== undefined && profile.rootMiB !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["profiles", name, "root"],
+          message: 'Specify only one of "root" or "rootMiB".',
         });
       }
       if (profile.maxDuration !== undefined && profile.maxDurationSecs !== undefined) {

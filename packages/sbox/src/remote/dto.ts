@@ -143,6 +143,7 @@ export const createRequestSchema = z.object({
   cpus: z.number().int().positive().optional(),
   memoryMiB: z.number().int().positive().optional(),
   tmpMiB: z.number().int().positive().optional(),
+  rootMiB: z.number().int().positive().optional(),
   workdir: z.string().optional(),
   user: z.string().optional(),
   shell: z.string().optional(),

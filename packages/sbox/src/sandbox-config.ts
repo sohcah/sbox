@@ -27,6 +27,8 @@ export interface DecodedSandboxConfig {
   readonly memoryMiB: number;
   /** Size of `/tmp` tmpfs when present in mounts; otherwise null. */
   readonly tmpMiB: number | null;
+  /** OCI overlay upper size from image.Oci.upperSizeMib when present; otherwise null. */
+  readonly rootMiB: number | null;
   readonly workdir: string | null;
   readonly user: string | null;
   readonly shell: string | null;
@@ -65,6 +67,7 @@ export function decodeSandboxConfig(config: unknown): DecodedSandboxConfig {
       PHASE1_DEFAULT_MEMORY_MIB,
     ),
     tmpMiB: decodeTmpfsSizeMiB(config, "/tmp"),
+    rootMiB: decodeOciUpperSizeMiB(root["image"]),
     workdir: readNullableString(runtime?.["workdir"]),
     user: readNullableString(runtime?.["user"]),
     shell: readNullableString(runtime?.["shell"]),
@@ -134,6 +137,24 @@ function readOciImageReference(image: unknown): string {
     throw new Error("SandboxConfig.image.Oci.reference must be a non-empty string.");
   }
   return reference;
+}
+
+/** Read OCI overlay upper size from SandboxConfig.image.Oci when present. */
+function decodeOciUpperSizeMiB(image: unknown): number | null {
+  if (image === null || typeof image !== "object") {
+    return null;
+  }
+  const oci = (image as Record<string, unknown>)["Oci"];
+  if (oci === null || typeof oci !== "object") {
+    return null;
+  }
+  const size =
+    (oci as Record<string, unknown>)["upperSizeMib"] ??
+    (oci as Record<string, unknown>)["upperSizeMiB"];
+  if (typeof size === "number" && Number.isInteger(size) && size > 0) {
+    return size;
+  }
+  return null;
 }
 
 /** Read `/tmp` (or other guest) tmpfs size from SandboxConfig mounts when present. */

@@ -40,6 +40,8 @@ export interface NativeSandboxRecord {
   readonly memoryMiB: number;
   /** Explicit `/tmp` tmpfs size when present in SandboxConfig; otherwise null. */
   readonly tmpMiB: number | null;
+  /** OCI overlay upper size when present in SandboxConfig.image.Oci; otherwise null. */
+  readonly rootMiB: number | null;
   readonly workdir: string | null;
   readonly user: string | null;
   readonly shell: string | null;
@@ -65,6 +67,8 @@ export interface NativeCreateRequest {
   readonly memoryMiB: number;
   /** When non-null, mounts a sized tmpfs at `/tmp` (overrides MSB default). */
   readonly tmpMiB: number | null;
+  /** When non-null, sets OCI overlay upper size via `.imageWith(…upperSize)` (overrides MSB default). */
+  readonly rootMiB: number | null;
   readonly workdir: string | null;
   readonly user: string | null;
   readonly shell: string | null;

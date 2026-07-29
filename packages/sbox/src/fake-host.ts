@@ -643,6 +643,7 @@ export class FakeHost implements Host {
       cpus: input.creation?.cpus ?? 1,
       memoryMiB: input.creation?.memoryMiB ?? 512,
       ...(input.creation?.tmpMiB !== undefined ? { tmpMiB: input.creation.tmpMiB } : {}),
+      ...(input.creation?.rootMiB !== undefined ? { rootMiB: input.creation.rootMiB } : {}),
       ...(input.creation?.workdir !== undefined ? { workdir: input.creation.workdir } : {}),
       ...(input.creation?.user !== undefined ? { user: input.creation.user } : {}),
       ...(input.creation?.shell !== undefined ? { shell: input.creation.shell } : {}),
@@ -661,6 +662,7 @@ export class FakeHost implements Host {
       cpus: creation.cpus,
       memoryMiB: creation.memoryMiB,
       ...(creation.tmpMiB !== undefined ? { tmpMiB: creation.tmpMiB } : {}),
+      ...(creation.rootMiB !== undefined ? { rootMiB: creation.rootMiB } : {}),
       ...(creation.workdir !== undefined ? { workdir: creation.workdir } : {}),
       ...(creation.user !== undefined ? { user: creation.user } : {}),
       ...(creation.shell !== undefined ? { shell: creation.shell } : {}),
@@ -846,6 +848,14 @@ export class FakeHost implements Host {
       });
     }
     if (
+      request.rootMiB !== undefined &&
+      (!Number.isInteger(request.rootMiB) || request.rootMiB < 1)
+    ) {
+      throw SboxError.validation("Sandbox rootMiB must be a positive integer.", {
+        details: { path: "rootMiB" },
+      });
+    }
+    if (
       request.maxDurationSecs !== undefined &&
       request.maxDurationSecs !== null &&
       (!Number.isInteger(request.maxDurationSecs) || request.maxDurationSecs < 1)
@@ -1008,6 +1018,7 @@ function creationFromProjection(
     cpus: projected.cpus,
     memoryMiB: projected.memoryMiB,
     ...(projected.tmpMiB !== null ? { tmpMiB: projected.tmpMiB } : {}),
+    ...(projected.rootMiB !== null ? { rootMiB: projected.rootMiB } : {}),
     ...(projected.workdir !== null ? { workdir: projected.workdir } : {}),
     ...(projected.user !== null ? { user: projected.user } : {}),
     ...(projected.shell !== null ? { shell: projected.shell } : {}),

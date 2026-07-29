@@ -30,8 +30,12 @@ export function createMicrosandboxRuntime(): NativeRuntime {
 class MicrosandboxRuntime implements NativeRuntime {
   async create(request: NativeCreateRequest): Promise<NativeLiveHandle> {
     try {
-      let builder = Sandbox.builder(request.name)
-        .image(request.image)
+      let builder = Sandbox.builder(request.name);
+      builder =
+        request.rootMiB !== null
+          ? builder.imageWith((i) => i.oci(request.image).upperSize(request.rootMiB!))
+          : builder.image(request.image);
+      builder = builder
         .cpus(request.cpus)
         .memory(MiB(request.memoryMiB))
         .detached(request.detached)
@@ -214,6 +218,7 @@ export function recordFromHandle(handle: {
     cpus: decoded.cpus,
     memoryMiB: decoded.memoryMiB,
     tmpMiB: decoded.tmpMiB,
+    rootMiB: decoded.rootMiB,
     workdir: decoded.workdir,
     user: decoded.user,
     shell: decoded.shell,

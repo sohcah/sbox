@@ -25,6 +25,8 @@ describe("decodeSandboxConfig (microsandbox@0.6.6)", () => {
     expect(decoded.image).toBe("alpine:3.20");
     expect(decoded.cpus).toBe(1);
     expect(decoded.memoryMiB).toBe(512);
+    expect(decoded.tmpMiB).toBeNull();
+    expect(decoded.rootMiB).toBe(4096);
     expect(decoded.workdir).toBe("/work");
     expect(decoded.user).toBe("root");
     expect(decoded.shell).toBe("/bin/sh");
@@ -137,6 +139,7 @@ describe("immutable creation projection", () => {
       cpus: PHASE1_DEFAULT_CPUS,
       memoryMiB: PHASE1_DEFAULT_MEMORY_MIB,
       tmpMiB: null,
+      rootMiB: null,
       workdir: null,
       user: null,
       shell: null,
@@ -158,6 +161,13 @@ describe("immutable creation projection", () => {
   it("projects explicit tmpMiB without changing omitted defaults", () => {
     const projected = projectCreateRequest({ image: "alpine:3.20", tmpMiB: 2048 });
     expect(projected.tmpMiB).toBe(2048);
+    expect(projected.memoryMiB).toBe(PHASE1_DEFAULT_MEMORY_MIB);
+  });
+
+  it("projects explicit rootMiB without changing omitted defaults", () => {
+    const projected = projectCreateRequest({ image: "alpine:3.20", rootMiB: 16384 });
+    expect(projected.rootMiB).toBe(16384);
+    expect(projected.tmpMiB).toBeNull();
     expect(projected.memoryMiB).toBe(PHASE1_DEFAULT_MEMORY_MIB);
   });
 
@@ -218,6 +228,7 @@ describe("immutable creation projection", () => {
           cpus: PHASE1_DEFAULT_CPUS,
           memoryMiB: PHASE1_DEFAULT_MEMORY_MIB,
           tmpMiB: null,
+          rootMiB: null,
           workdir: null,
           user: null,
           shell: null,
@@ -246,6 +257,7 @@ describe("immutable creation projection", () => {
           cpus: PHASE1_DEFAULT_CPUS,
           memoryMiB: PHASE1_DEFAULT_MEMORY_MIB,
           tmpMiB: null,
+          rootMiB: null,
           workdir: null,
           user: null,
           shell: null,
@@ -269,6 +281,7 @@ describe("immutable creation projection", () => {
           cpus: PHASE1_DEFAULT_CPUS,
           memoryMiB: PHASE1_DEFAULT_MEMORY_MIB,
           tmpMiB: null,
+          rootMiB: null,
           workdir: null,
           user: null,
           shell: null,

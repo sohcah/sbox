@@ -273,6 +273,7 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
         ...(body.cpus !== undefined ? { cpus: body.cpus } : {}),
         ...(body.memoryMiB !== undefined ? { memoryMiB: body.memoryMiB } : {}),
         ...(body.tmpMiB !== undefined ? { tmpMiB: body.tmpMiB } : {}),
+        ...(body.rootMiB !== undefined ? { rootMiB: body.rootMiB } : {}),
         ...(body.workdir !== undefined ? { workdir: body.workdir } : {}),
         ...(body.user !== undefined ? { user: body.user } : {}),
         ...(body.shell !== undefined ? { shell: body.shell } : {}),

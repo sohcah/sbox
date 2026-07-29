@@ -36,6 +36,7 @@ export function projectCreateRequest(request: {
   readonly cpus?: number;
   readonly memoryMiB?: number;
   readonly tmpMiB?: number;
+  readonly rootMiB?: number;
   readonly workdir?: string;
   readonly user?: string;
   readonly shell?: string;
@@ -88,6 +89,7 @@ export function projectCreateRequest(request: {
     cpus: request.cpus ?? PHASE1_DEFAULT_CPUS,
     memoryMiB: request.memoryMiB ?? PHASE1_DEFAULT_MEMORY_MIB,
     tmpMiB: request.tmpMiB ?? null,
+    rootMiB: request.rootMiB ?? null,
     workdir: request.workdir ?? null,
     user: request.user ?? null,
     shell: request.shell ?? null,
@@ -111,6 +113,7 @@ export function immutableCreationEquals(
     left.cpus === right.cpus &&
     left.memoryMiB === right.memoryMiB &&
     left.tmpMiB === right.tmpMiB &&
+    left.rootMiB === right.rootMiB &&
     left.workdir === right.workdir &&
     left.user === right.user &&
     left.shell === right.shell &&
@@ -149,6 +152,9 @@ export function immutableCreationDriftFields(
   }
   if (expected.tmpMiB !== actual.tmpMiB) {
     fields.push("tmpMiB");
+  }
+  if (expected.rootMiB !== actual.rootMiB) {
+    fields.push("rootMiB");
   }
   if (expected.workdir !== actual.workdir) {
     fields.push("workdir");

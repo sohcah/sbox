@@ -36,6 +36,8 @@ export interface SandboxImmutableCreation {
   readonly memoryMiB: number;
   /** Explicit guest `/tmp` tmpfs size; `null` keeps Microsandbox default (not fingerprinted). */
   readonly tmpMiB: number | null;
+  /** Explicit OCI overlay upper size; `null` keeps Microsandbox default (not fingerprinted). */
+  readonly rootMiB: number | null;
   readonly workdir: string | null;
   readonly user: string | null;
   readonly shell: string | null;
@@ -101,6 +103,7 @@ export type NativeCreationEvidence = {
   readonly cpus: number;
   readonly memoryMiB: number;
   readonly tmpMiB: number | null;
+  readonly rootMiB: number | null;
   readonly workdir: string | null;
   readonly user: string | null;
   readonly shell: string | null;
@@ -147,6 +150,7 @@ export function nativeRecordMatchesCreation(
     readonly cpus: number;
     readonly memoryMiB: number;
     readonly tmpMiB: number | null;
+    readonly rootMiB: number | null;
     readonly workdir: string | null;
     readonly user: string | null;
     readonly shell: string | null;
@@ -173,6 +177,10 @@ export function nativeRecordMatchesCreation(
   }
   // Only compare when the profile explicitly sized /tmp; MSB always injects a default.
   if (requested.tmpMiB !== null && record.tmpMiB !== requested.tmpMiB) {
+    return false;
+  }
+  // Only compare when the profile explicitly sized the overlay; MSB always persists upperSizeMib.
+  if (requested.rootMiB !== null && record.rootMiB !== requested.rootMiB) {
     return false;
   }
   if (record.workdir !== requested.workdir) {
@@ -250,6 +258,7 @@ function creationFingerprint(projection: SandboxImmutableCreation): string {
     cpus: projection.cpus,
     memoryMiB: projection.memoryMiB,
     ...(projection.tmpMiB !== null ? { tmpMiB: projection.tmpMiB } : {}),
+    ...(projection.rootMiB !== null ? { rootMiB: projection.rootMiB } : {}),
     workdir: projection.workdir,
     user: projection.user,
     shell: projection.shell,

@@ -614,6 +614,10 @@ export function reportCreationDrift(
     if (field === "hostname" && expected.hostname == null) {
       return false;
     }
+    // Microsandbox always injects a default /tmp tmpfs; only explicit sizes drift.
+    if (field === "tmpMiB" && expected.tmpMiB == null) {
+      return false;
+    }
     return true;
   });
 

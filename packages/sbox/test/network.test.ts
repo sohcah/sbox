@@ -216,6 +216,7 @@ describe("network decode and fingerprint round-trip", () => {
           image: actual.image,
           cpus: actual.cpus,
           memoryMiB: actual.memoryMiB,
+          tmpMiB: actual.tmpMiB,
           workdir: actual.workdir,
           user: actual.user,
           shell: actual.shell,

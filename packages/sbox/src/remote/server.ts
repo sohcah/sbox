@@ -399,9 +399,7 @@ export async function createSboxServer(options: SboxServerOptions): Promise<Sbox
               "cache-control": "no-store",
             });
           }
-          const platform = requireDockerPlatform(
-            await options.host.capabilities({ signal }),
-          );
+          const platform = requireDockerPlatform(await options.host.capabilities({ signal }));
           const inspection = await options.host.ensureImage(
             {
               contextRoot,

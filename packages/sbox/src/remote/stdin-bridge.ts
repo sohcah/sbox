@@ -6,10 +6,7 @@
  * after `ready` still reach the guest (e.g. Codex `codex exec` via stdin).
  */
 
-import {
-  BoundedAsyncQueue,
-  DEFAULT_STREAM_QUEUE_CAPACITY,
-} from "../process/bounded-queue.js";
+import { BoundedAsyncQueue, DEFAULT_STREAM_QUEUE_CAPACITY } from "../process/bounded-queue.js";
 
 export interface StdinBridge {
   readonly iterable: AsyncIterable<Uint8Array>;
@@ -17,9 +14,7 @@ export interface StdinBridge {
   end(): void;
 }
 
-export function createStdinBridge(
-  capacity: number = DEFAULT_STREAM_QUEUE_CAPACITY,
-): StdinBridge {
+export function createStdinBridge(capacity: number = DEFAULT_STREAM_QUEUE_CAPACITY): StdinBridge {
   const queue = new BoundedAsyncQueue<Uint8Array>(capacity);
   return {
     iterable: {

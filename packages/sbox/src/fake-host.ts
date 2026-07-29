@@ -840,10 +840,7 @@ export class FakeHost implements Host {
         details: { path: "memoryMiB" },
       });
     }
-    if (
-      request.tmpMiB !== undefined &&
-      (!Number.isInteger(request.tmpMiB) || request.tmpMiB < 1)
-    ) {
+    if (request.tmpMiB !== undefined && (!Number.isInteger(request.tmpMiB) || request.tmpMiB < 1)) {
       throw SboxError.validation("Sandbox tmpMiB must be a positive integer.", {
         details: { path: "tmpMiB" },
       });

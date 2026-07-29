@@ -190,7 +190,10 @@ export class MemoryNativeRuntime implements NativeRuntime {
   }
 
   seed(
-    record: Omit<NativeSandboxRecord, "network" | "secrets" | "mounts" | "bindMounts" | "tmpMiB"> & {
+    record: Omit<
+      NativeSandboxRecord,
+      "network" | "secrets" | "mounts" | "bindMounts" | "tmpMiB"
+    > & {
       readonly tmpMiB?: NativeSandboxRecord["tmpMiB"];
       readonly network?: NativeSandboxRecord["network"];
       readonly secrets?: NativeSandboxRecord["secrets"];

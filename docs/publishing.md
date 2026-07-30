@@ -1,6 +1,6 @@
 # Publishing
 
-Packages: `@sohcah/sbox`, `@sohcah/sbox-sandcastle` (both `0.2.6`).
+Packages: `@sohcah/sbox`, `@sohcah/sbox-sandcastle` (both `0.2.7`).
 
 Releases use **npm trusted publishing** (OIDC) from GitHub Actions — no long-lived
 `NPM_TOKEN`. Provenance attestations are generated automatically.

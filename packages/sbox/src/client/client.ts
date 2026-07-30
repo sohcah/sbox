@@ -212,10 +212,14 @@ class HostSboxClient implements SboxClient {
       }
 
       if (existing === undefined) {
+        let createRequest = intent.request;
         if (intent.needsImageEnsure) {
-          await this.ensureProfileImage(options);
+          // Host ensure/build is authoritative: client-predicted identity can
+          // diverge after archive rematerialize (e.g. file modes in the hash).
+          const image = await this.ensureProfileImage(options);
+          createRequest = { ...intent.request, image: image.reference };
         }
-        const created = await host.create(intent.request, hostOptions);
+        const created = await host.create(createRequest, hostOptions);
         return new HostSandboxHandle(host, created.identity);
       }
 

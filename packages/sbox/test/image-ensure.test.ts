@@ -13,6 +13,7 @@ import {
 import {
   buildImageOwnershipEnv,
   buildImageOwnershipLabels,
+  formatImageContentDigest,
   formatNativeImageReference,
   hasNoReservedImageEvidence,
   inspectImageOwnershipEvidence,
@@ -520,6 +521,39 @@ describe("ensureImage via FakeHost", () => {
     expect(host.operations).toContain("get");
     expect(host.operations).toContain("start");
     expect(ensureCount).toBeGreaterThanOrEqual(1);
+    await client[Symbol.asyncDispose]();
+  });
+
+  it("up creates with the Host ensure reference when client prediction diverges", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sbox-up-diverge-"));
+    const host = new FakeHost();
+    const hostDigest = "c".repeat(64);
+    const hostReference = formatNativeImageReference(hostDigest);
+    const createdImages: string[] = [];
+    const originalEnsure = host.ensureImage.bind(host);
+    const originalCreate = host.create.bind(host);
+    host.ensureImage = async (request, options) => {
+      const ensured = await originalEnsure(request, options);
+      expect(ensured.reference).not.toBe(hostReference);
+      return {
+        ...ensured,
+        reference: hostReference,
+        contentIdentity: formatImageContentDigest(hostDigest),
+      };
+    };
+    host.create = async (request, options) => {
+      createdImages.push(request.image);
+      return originalCreate(request, options);
+    };
+    const client = createSboxClient({
+      project: await dockerfileProject(root),
+      host,
+      ownsHost: false,
+      configDirectory: root,
+    });
+    const handle = await client.up({ profile: "built" });
+    expect(createdImages).toEqual([hostReference]);
+    expect((await handle.inspect()).creation.image).toBe(hostReference);
     await client[Symbol.asyncDispose]();
   });
 
